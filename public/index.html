@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FedEx Batch Shipping Tool — Integrazione PrestaShop</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Sidebar / Pannello Impostazioni -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">
+          <i data-lucide="truck" class="icon-brand"></i>
+        </div>
+        <div class="brand-text">
+          <h2>FedEx Link</h2>
+          <span>Connettore PrestaShop</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Valori Predefiniti Spedizione</div>
+        
+        <div class="form-group">
+          <label for="default-weight"><i data-lucide="scale"></i> Peso (kg)</label>
+          <input type="number" id="default-weight" step="0.5" value="70.0" min="0.1">
+        </div>
+
+        <div class="form-group">
+          <label for="default-length"><i data-lucide="box"></i> Lunghezza (cm)</label>
+          <input type="number" id="default-length" value="80" min="1">
+        </div>
+
+        <div class="form-group">
+          <label for="default-width"><i data-lucide="box"></i> Larghezza (cm)</label>
+          <input type="number" id="default-width" value="60" min="1">
+        </div>
+
+        <div class="form-group">
+          <label for="default-height"><i data-lucide="box"></i> Altezza (cm)</label>
+          <input type="number" id="default-height" value="100" min="1">
+        </div>
+
+        <div class="form-group">
+          <label for="default-service"><i data-lucide="shield-check"></i> Tipo Servizio</label>
+          <select id="default-service">
+            <option value="FEDEX_REGIONAL_ECONOMY_FREIGHT" selected>Regional Economy Freight</option>
+            <option value="FEDEX_REGIONAL_ECONOMY">Regional Economy</option>
+            <option value="FEDEX_INTERNATIONAL_PRIORITY">International Priority</option>
+            <option value="FEDEX_INTERNATIONAL_ECONOMY">International Economy</option>
+            <option value="INTERNATIONAL_FIRST">International First</option>
+            <option value="STANDARD_OVERNIGHT">Standard Overnight</option>
+            <option value="PRIORITY_OVERNIGHT">Priority Overnight</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="default-package"><i data-lucide="package"></i> Tipo Imballo</label>
+          <select id="default-package">
+            <option value="YOUR_PACKAGING" selected>Tuo Imballo (Your Packaging)</option>
+            <option value="FEDEX_BOX">FedEx Box</option>
+            <option value="FEDEX_ENVELOPE">FedEx Envelope</option>
+            <option value="FEDEX_PAK">FedEx Pak</option>
+            <option value="FEDEX_TUBE">FedEx Tube</option>
+          </select>
+        </div>
+
+        <div class="nav-section-title">Dati Mittente (Shipper)</div>
+        <div class="settings-toggle-btn" id="toggle-shipper-settings">
+          <span>Modifica Mittente</span>
+          <i data-lucide="chevron-down" id="shipper-chevron"></i>
+        </div>
+
+        <div class="shipper-settings-content collapsed" id="shipper-settings-panel">
+          <div class="form-group">
+            <label>Nome</label>
+            <input type="text" id="shipper-name" placeholder="Nome Mittente">
+          </div>
+          <div class="form-group">
+            <label>Azienda</label>
+            <input type="text" id="shipper-company" placeholder="Azienda">
+          </div>
+          <div class="form-group">
+            <label>Indirizzo 1</label>
+            <input type="text" id="shipper-address1" placeholder="Indirizzo Mittente">
+          </div>
+          <div class="form-group">
+            <label>Città</label>
+            <input type="text" id="shipper-city" placeholder="Città">
+          </div>
+          <div class="form-group">
+            <label>C.A.P.</label>
+            <input type="text" id="shipper-zip" placeholder="C.A.P.">
+          </div>
+          <div class="form-group">
+            <label>Paese (Codice ISO)</label>
+            <input type="text" id="shipper-country" placeholder="IT">
+          </div>
+          <div class="form-group">
+            <label>Telefono</label>
+            <input type="text" id="shipper-phone" placeholder="Telefono">
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="save-shipper-btn">
+            <i data-lucide="save"></i> Salva Dati
+          </button>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <a href="/templates/fedex_example.xlsx" class="example-template-link" download>
+          <i data-lucide="file-spreadsheet"></i>
+          <span>Scarica modello Excel</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Area Contenuto Principale -->
+    <main class="main-content">
+      
+      <!-- Intestazione superiore -->
+      <header class="main-header">
+        <div class="header-title">
+          <h1>Gestione Spedizioni PrestaShop</h1>
+          <p>Seleziona gli ordini da dagimarket.com e compila l'Excel per la spedizione batch FedEx</p>
+        </div>
+        <div class="connection-status" id="status-indicator">
+          <span class="status-dot green"></span>
+          <span class="status-text">Connesso</span>
+        </div>
+      </header>
+
+      <!-- Pannello Filtri e Ricerca -->
+      <section class="dashboard-card filter-card">
+        <form id="filter-form" class="filter-form">
+          <div class="filter-grid">
+            <div class="form-group">
+              <label for="filter-reference">Riferimento Ordine</label>
+              <div class="input-with-icon">
+                <i data-lucide="search"></i>
+                <input type="text" id="filter-reference" placeholder="Es. XKBKL">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="filter-state">Stato Ordine</label>
+              <div class="input-with-icon">
+                <i data-lucide="list-filter"></i>
+                <select id="filter-state">
+                  <option value="">Caricamento stati...</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="filter-date-from">Dalla Data</label>
+              <input type="date" id="filter-date-from">
+            </div>
+
+            <div class="form-group">
+              <label for="filter-date-to">Alla Data</label>
+              <input type="date" id="filter-date-to">
+            </div>
+
+            <div class="form-group">
+              <label for="filter-limit">Limite Ordini</label>
+              <div class="input-with-icon">
+                <i data-lucide="sliders"></i>
+                <select id="filter-limit">
+                  <option value="20" selected>Primi 20 ordini</option>
+                  <option value="50">Primi 50 ordini</option>
+                  <option value="100">Primi 100 ordini</option>
+                  <option value="250">Primi 250 ordini</option>
+                  <option value="500">Primi 500 ordini</option>
+                  <option value="1000">Primi 1000 ordini</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="filter-actions">
+            <button type="button" class="btn btn-secondary" id="clear-filters-btn">
+              <i data-lucide="refresh-cw"></i> Reimposta
+            </button>
+            <button type="submit" class="btn btn-primary" id="search-btn">
+              <i data-lucide="arrow-right"></i> Cerca Ordini
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Area Notifiche / Toast -->
+      <div id="notification-area"></div>
+
+      <!-- Elenco Ordini -->
+      <section class="dashboard-card list-card">
+        <div class="list-header">
+          <div class="list-summary">
+            <h3 id="orders-count-text">Trovati 0 ordini</h3>
+            <p>Seleziona gli ordini da inserire nella lista di spedizione.</p>
+          </div>
+          <div class="list-actions">
+            <button class="btn btn-outline btn-sm" id="select-all-btn">
+              <i data-lucide="check-square"></i> Seleziona Tutti
+            </button>
+            <button class="btn btn-outline btn-sm" id="deselect-all-btn">
+              <i data-lucide="square"></i> Deseleziona Tutti
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="orders-table" id="orders-table">
+            <thead>
+              <tr>
+                <th width="40"><input type="checkbox" id="master-checkbox"></th>
+                <th width="100">ID Ordine</th>
+                <th width="120">Riferimento</th>
+                <th width="160">Data Ordine</th>
+                <th>Cliente</th>
+                <th>Indirizzo</th>
+                <th>Città Destinazione</th>
+                <th width="80" class="text-center">Prov.</th>
+                <th width="80" class="text-center">Naz.</th>
+                <th width="240">Prodotti</th>
+                <th width="150">Stato Ordine</th>
+                <th width="120" class="text-right">Importo Totale</th>
+              </tr>
+            </thead>
+            <tbody id="orders-table-body">
+              <tr class="empty-row">
+                <td colspan="12">
+                  <div class="empty-state">
+                    <i data-lucide="package-search"></i>
+                    <p>Nessun ordine caricato. Modifica i filtri e fai clic su "Cerca Ordini".</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Azioni di Gruppo (Footer Fluttuante) -->
+      <div class="action-footer hidden" id="action-footer">
+        <div class="action-footer-content">
+          <div class="selected-info">
+            <span class="badge badge-purple" id="selected-badge">0</span>
+            <span>ordini selezionati per l'esportazione batch FedEx:</span>
+          </div>
+          <div class="selected-tags" id="selected-tags"></div>
+        </div>
+        <button class="btn btn-accent" id="export-btn">
+          <i data-lucide="download"></i>
+          <span>Genera Foglio Spedizioni FedEx</span>
+        </button>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
