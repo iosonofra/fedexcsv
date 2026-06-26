@@ -641,7 +641,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- SEZIONE IMPORTAZIONE TRACKING FEDEX ---
 
   // Navigazione Tab
+  const menuOrders = document.getElementById('menu-orders');
+  const menuImportTracking = document.getElementById('menu-import-tracking');
   const menuHistory = document.getElementById('menu-history');
+  const sectionOrders = document.getElementById('section-orders');
+  const sectionImportTracking = document.getElementById('section-import-tracking');
   const sectionHistory = document.getElementById('section-history');
   const mainHeaderTitle = document.querySelector('.header-title h1');
   const mainHeaderSubtitle = document.querySelector('.header-title p');
