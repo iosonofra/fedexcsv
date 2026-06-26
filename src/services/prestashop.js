@@ -88,6 +88,67 @@ class PrestaShopClient {
       return [];
     }
   }
+
+  async getOrdersByReference(reference) {
+    return this.getOrders({ 'filter[reference]': reference });
+  }
+
+  async getOrderCarrierForOrder(orderId) {
+    try {
+      const { data } = await this.client.get('/order_carriers', {
+        params: {
+          'filter[id_order]': orderId,
+          display: 'full'
+        }
+      });
+      if (!data || !data.order_carriers || data.order_carriers.length === 0) {
+        return null;
+      }
+      return data.order_carriers[0];
+    } catch (error) {
+      console.error(`PrestaShop getOrderCarrierForOrder(${orderId}) error:`, error.message);
+      return null;
+    }
+  }
+
+  async updateOrderCarrierTracking(orderCarrierId, orderCarrierData, trackingNumber) {
+    try {
+      // Build the XML payload from the existing order carrier data, updating only tracking_number.
+      const xmlPayload = `
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <order_carrier>
+    <id>${orderCarrierId}</id>
+    <id_order>${orderCarrierData.id_order || ''}</id_order>
+    <id_carrier>${orderCarrierData.id_carrier || ''}</id_carrier>
+    <id_order_invoice>${orderCarrierData.id_order_invoice || ''}</id_order_invoice>
+    <weight>${orderCarrierData.weight || ''}</weight>
+    <shipping_cost_tax_excl>${orderCarrierData.shipping_cost_tax_excl || ''}</shipping_cost_tax_excl>
+    <shipping_cost_tax_incl>${orderCarrierData.shipping_cost_tax_incl || ''}</shipping_cost_tax_incl>
+    <tracking_number>${trackingNumber}</tracking_number>
+    <date_add>${orderCarrierData.date_add || ''}</date_add>
+  </order_carrier>
+</prestashop>
+      `.trim();
+
+      const { data } = await this.client.put(`/order_carriers/${orderCarrierId}`, xmlPayload, {
+        headers: {
+          'Content-Type': 'application/xml'
+        },
+        params: {
+          output_format: 'JSON'
+        }
+      });
+      
+      return data ? data.order_carrier : null;
+    } catch (error) {
+      console.error(`PrestaShop updateOrderCarrierTracking(${orderCarrierId}) error:`, error.message);
+      if (error.response && error.response.data) {
+        console.error('Response details:', JSON.stringify(error.response.data));
+      }
+      throw error;
+    }
+  }
 }
 
 module.exports = PrestaShopClient;
+

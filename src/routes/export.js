@@ -3,6 +3,8 @@ const router = express.Router();
 const { buildFedExExcel, getFedExDefaults } = require('../services/fedexExcel');
 const config = require('../config');
 const settingsStore = require('../services/settingsStore');
+const historyStore = require('../services/historyStore');
+const path = require('path');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -250,6 +252,23 @@ router.post('/', async (req, res) => {
 
     await workbook.xlsx.write(res);
     res.end();
+
+    // Save physically to server disk in exports directory
+    try {
+      const filePath = path.join(historyStore.EXPORTS_DIR, filename);
+      await workbook.xlsx.writeFile(filePath);
+      
+      // Log in history registry
+      const orderReferences = rows.map(r => r.reference);
+      historyStore.addEntry('export', {
+        fileName: filename,
+        count: rows.length,
+        details: orderReferences,
+        warnings: warnings
+      });
+    } catch (err) {
+      console.error('Error writing exported file to history storage:', err);
+    }
 
   } catch (error) {
     console.error('Export error:', error);

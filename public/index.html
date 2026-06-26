@@ -28,6 +28,21 @@
         </div>
       </div>
 
+      <div class="sidebar-menu">
+        <button class="menu-item active" id="menu-orders">
+          <i data-lucide="shopping-cart"></i>
+          <span>Ordini PrestaShop</span>
+        </button>
+        <button class="menu-item" id="menu-import-tracking">
+          <i data-lucide="upload"></i>
+          <span>Importa Tracking FedEx</span>
+        </button>
+        <button class="menu-item" id="menu-history">
+          <i data-lucide="history"></i>
+          <span>Storico Operazioni</span>
+        </button>
+      </div>
+
       <nav class="sidebar-nav">
         <div class="nav-section-title">Valori Predefiniti Spedizione</div>
         
@@ -143,130 +158,317 @@
         </div>
       </header>
 
-      <!-- Pannello Filtri e Ricerca -->
-      <section class="dashboard-card filter-card">
-        <form id="filter-form" class="filter-form">
-          <div class="filter-grid">
-            <div class="form-group">
-              <label for="filter-reference">Riferimento Ordine</label>
-              <div class="input-with-icon">
-                <i data-lucide="search"></i>
-                <input type="text" id="filter-reference" placeholder="Es. XKBKL">
-              </div>
-            </div>
 
-            <div class="form-group">
-              <label for="filter-state">Stato Ordine</label>
-              <div class="input-with-icon">
-                <i data-lucide="list-filter"></i>
-                <select id="filter-state">
-                  <option value="">Caricamento stati...</option>
-                </select>
-              </div>
-            </div>
 
-            <div class="form-group">
-              <label for="filter-date-from">Dalla Data</label>
-              <input type="date" id="filter-date-from">
-            </div>
-
-            <div class="form-group">
-              <label for="filter-date-to">Alla Data</label>
-              <input type="date" id="filter-date-to">
-            </div>
-
-            <div class="form-group">
-              <label for="filter-limit">Limite Ordini</label>
-              <div class="input-with-icon">
-                <i data-lucide="sliders"></i>
-                <select id="filter-limit">
-                  <option value="20" selected>Primi 20 ordini</option>
-                  <option value="50">Primi 50 ordini</option>
-                  <option value="100">Primi 100 ordini</option>
-                  <option value="250">Primi 250 ordini</option>
-                  <option value="500">Primi 500 ordini</option>
-                  <option value="1000">Primi 1000 ordini</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div class="filter-actions">
-            <button type="button" class="btn btn-secondary" id="clear-filters-btn">
-              <i data-lucide="refresh-cw"></i> Reimposta
-            </button>
-            <button type="submit" class="btn btn-primary" id="search-btn">
-              <i data-lucide="arrow-right"></i> Cerca Ordini
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <!-- Area Notifiche / Toast -->
+      <!-- Area Notifiche / Toast Globale -->
       <div id="notification-area"></div>
 
-      <!-- Elenco Ordini -->
-      <section class="dashboard-card list-card">
-        <div class="list-header">
-          <div class="list-summary">
-            <h3 id="orders-count-text">Trovati 0 ordini</h3>
-            <p>Seleziona gli ordini da inserire nella lista di spedizione.</p>
+      <!-- SEZIONE 1: Gestione Ordini PrestaShop (Esportazione) -->
+      <div id="section-orders" class="page-section">
+        
+        <!-- Pannello Filtri e Ricerca -->
+        <section class="dashboard-card filter-card">
+          <form id="filter-form" class="filter-form">
+            <div class="filter-grid">
+              <div class="form-group">
+                <label for="filter-reference">Riferimento Ordine</label>
+                <div class="input-with-icon">
+                  <i data-lucide="search"></i>
+                  <input type="text" id="filter-reference" placeholder="Es. XKBKL">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="filter-state">Stato Ordine</label>
+                <div class="input-with-icon">
+                  <i data-lucide="list-filter"></i>
+                  <select id="filter-state">
+                    <option value="">Caricamento stati...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="filter-date-from">Dalla Data</label>
+                <input type="date" id="filter-date-from">
+              </div>
+
+              <div class="form-group">
+                <label for="filter-date-to">Alla Data</label>
+                <input type="date" id="filter-date-to">
+              </div>
+
+              <div class="form-group">
+                <label for="filter-limit">Limite Ordini</label>
+                <div class="input-with-icon">
+                  <i data-lucide="sliders"></i>
+                  <select id="filter-limit">
+                    <option value="20" selected>Primi 20 ordini</option>
+                    <option value="50">Primi 50 ordini</option>
+                    <option value="100">Primi 100 ordini</option>
+                    <option value="250">Primi 250 ordini</option>
+                    <option value="500">Primi 500 ordini</option>
+                    <option value="1000">Primi 1000 ordini</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="filter-actions">
+              <button type="button" class="btn btn-secondary" id="clear-filters-btn">
+                <i data-lucide="refresh-cw"></i> Reimposta
+              </button>
+              <button type="submit" class="btn btn-primary" id="search-btn">
+                <i data-lucide="arrow-right"></i> Cerca Ordini
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Elenco Ordini -->
+        <section class="dashboard-card list-card">
+          <div class="list-header">
+            <div class="list-summary">
+              <h3 id="orders-count-text">Trovati 0 ordini</h3>
+              <p>Seleziona gli ordini da inserire nella lista di spedizione.</p>
+            </div>
+            <div class="list-actions">
+              <button class="btn btn-outline btn-sm" id="select-all-btn">
+                <i data-lucide="check-square"></i> Seleziona Tutti
+              </button>
+              <button class="btn btn-outline btn-sm" id="deselect-all-btn">
+                <i data-lucide="square"></i> Deseleziona Tutti
+              </button>
+            </div>
           </div>
-          <div class="list-actions">
-            <button class="btn btn-outline btn-sm" id="select-all-btn">
-              <i data-lucide="check-square"></i> Seleziona Tutti
-            </button>
-            <button class="btn btn-outline btn-sm" id="deselect-all-btn">
-              <i data-lucide="square"></i> Deseleziona Tutti
-            </button>
+
+          <div class="table-container">
+            <table class="orders-table" id="orders-table">
+              <thead>
+                <tr>
+                  <th width="40"><input type="checkbox" id="master-checkbox"></th>
+                  <th width="100">ID Ordine</th>
+                  <th width="120">Riferimento</th>
+                  <th width="160">Data Ordine</th>
+                  <th>Cliente</th>
+                  <th>Indirizzo</th>
+                  <th>Città Destinazione</th>
+                  <th width="80" class="text-center">Prov.</th>
+                  <th width="80" class="text-center">Naz.</th>
+                  <th width="240">Prodotti</th>
+                  <th width="150">Stato Ordine</th>
+                  <th width="120" class="text-right">Importo Totale</th>
+                </tr>
+              </thead>
+              <tbody id="orders-table-body">
+                <tr class="empty-row">
+                  <td colspan="12">
+                    <div class="empty-state">
+                      <i data-lucide="package-search"></i>
+                      <p>Nessun ordine caricato. Modifica i filtri e fai clic su "Cerca Ordini".</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+        </section>
+
+        <!-- Azioni di Gruppo (Footer Fluttuante) -->
+        <div class="action-footer hidden" id="action-footer">
+          <div class="action-footer-content">
+            <div class="selected-info">
+              <span class="badge badge-purple" id="selected-badge">0</span>
+              <span>ordini selezionati per l'esportazione batch FedEx:</span>
+            </div>
+            <div class="selected-tags" id="selected-tags"></div>
+          </div>
+          <button class="btn btn-accent" id="export-btn">
+            <i data-lucide="download"></i>
+            <span>Genera Foglio Spedizioni FedEx</span>
+          </button>
         </div>
 
-        <div class="table-container">
-          <table class="orders-table" id="orders-table">
-            <thead>
-              <tr>
-                <th width="40"><input type="checkbox" id="master-checkbox"></th>
-                <th width="100">ID Ordine</th>
-                <th width="120">Riferimento</th>
-                <th width="160">Data Ordine</th>
-                <th>Cliente</th>
-                <th>Indirizzo</th>
-                <th>Città Destinazione</th>
-                <th width="80" class="text-center">Prov.</th>
-                <th width="80" class="text-center">Naz.</th>
-                <th width="240">Prodotti</th>
-                <th width="150">Stato Ordine</th>
-                <th width="120" class="text-right">Importo Totale</th>
-              </tr>
-            </thead>
-            <tbody id="orders-table-body">
-              <tr class="empty-row">
-                <td colspan="12">
-                  <div class="empty-state">
-                    <i data-lucide="package-search"></i>
-                    <p>Nessun ordine caricato. Modifica i filtri e fai clic su "Cerca Ordini".</p>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+      </div>
 
-      <!-- Azioni di Gruppo (Footer Fluttuante) -->
-      <div class="action-footer hidden" id="action-footer">
-        <div class="action-footer-content">
-          <div class="selected-info">
-            <span class="badge badge-purple" id="selected-badge">0</span>
-            <span>ordini selezionati per l'esportazione batch FedEx:</span>
+      <!-- SEZIONE 2: Importazione Tracking da FedEx (Associazione) -->
+      <div id="section-import-tracking" class="page-section hidden">
+        
+        <!-- Step 1: Upload File -->
+        <section class="dashboard-card" id="import-step-1">
+          <div class="list-header" style="margin-bottom: 20px;">
+            <div class="list-summary">
+              <h3>1. Carica File Risultati FedEx</h3>
+              <p>Carica il file Excel (.xlsx) o CSV contenente i codici di tracking generati da FedEx Ship Manager.</p>
+            </div>
           </div>
-          <div class="selected-tags" id="selected-tags"></div>
-        </div>
-        <button class="btn btn-accent" id="export-btn">
-          <i data-lucide="download"></i>
-          <span>Genera Foglio Spedizioni FedEx</span>
-        </button>
+          
+          <div class="upload-zone" id="drop-zone">
+            <i data-lucide="file-up"></i>
+            <h3>Trascina il file qui o clicca per sfogliare</h3>
+            <p>Supporta formati Excel (.xlsx) e CSV (.csv)</p>
+            <input type="file" id="file-input" class="hidden-file-input" accept=".xlsx,.csv">
+          </div>
+        </section>
+
+        <!-- Step 2: Configurazione Mappatura e Preview -->
+        <section class="dashboard-card hidden" id="import-step-2">
+          <div class="list-header" style="margin-bottom: 20px;">
+            <div class="list-summary">
+              <h3>2. Verifica Mappatura Colonne</h3>
+              <p>Controlla se le colonne del file sono state associate correttamente ai campi richiesti.</p>
+            </div>
+          </div>
+
+          <div class="mapping-preview">
+            <div class="mapping-fields">
+              <div class="form-group">
+                <label for="map-reference-col"><i data-lucide="key"></i> Colonna Riferimento Ordine (PrestaShop Reference)</label>
+                <select id="map-reference-col"></select>
+              </div>
+              <div class="form-group">
+                <label for="map-tracking-col"><i data-lucide="hash"></i> Colonna Codice Tracking (FedEx Tracking Number)</label>
+                <select id="map-tracking-col"></select>
+              </div>
+            </div>
+
+            <div class="list-summary" style="margin-top: 24px; margin-bottom: 12px;">
+              <h4>Anteprima Dati (Prime 5 righe rilevate)</h4>
+            </div>
+            
+            <div class="preview-table-container">
+              <table class="orders-table" style="margin: 0; min-width: 100%;">
+                <thead id="preview-table-head"></thead>
+                <tbody id="preview-table-body"></tbody>
+              </table>
+            </div>
+
+            <div class="filter-actions" style="margin-top: 24px;">
+              <button type="button" class="btn btn-secondary" id="btn-cancel-mapping">
+                <i data-lucide="x"></i> Annulla
+              </button>
+              <button type="button" class="btn btn-accent" id="btn-start-import">
+                <i data-lucide="play"></i> Associa Codici su PrestaShop
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 3: Riepilogo Risultati Importazione -->
+        <section class="dashboard-card hidden" id="import-step-3">
+          <div class="list-header" style="margin-bottom: 24px;">
+            <div class="list-summary">
+              <h3>3. Esito Importazione</h3>
+              <p>Il caricamento dei codici di tracking è completato. Di seguito il dettaglio delle operazioni effettuate.</p>
+            </div>
+            <button class="btn btn-primary" id="btn-reset-import">
+              <i data-lucide="refresh-cw"></i> Importa un altro file
+            </button>
+          </div>
+
+          <div class="summary-cards">
+            <div class="summary-card total">
+              <div class="number" id="summary-total">0</div>
+              <div class="label">Righe Rilevate</div>
+            </div>
+            <div class="summary-card success">
+              <div class="number" id="summary-success">0</div>
+              <div class="label">Aggiornati con successo</div>
+            </div>
+            <div class="summary-card warning">
+              <div class="number" id="summary-warning">0</div>
+              <div class="label">Avvisi / Duplicati</div>
+            </div>
+            <div class="summary-card error">
+              <div class="number" id="summary-error">0</div>
+              <div class="label">Errori</div>
+            </div>
+          </div>
+
+          <div class="list-summary" style="margin-top: 28px; margin-bottom: 14px;">
+            <h4>Registro Dettagliato Operazioni</h4>
+          </div>
+
+          <div class="table-container" style="max-height: 400px; border: 1px solid var(--card-border); border-radius: var(--border-radius-sm); background:#ffffff;">
+            <table class="log-table">
+              <thead>
+                <tr>
+                  <th width="80" class="text-center">Riga File</th>
+                  <th width="160">Riferimento Ordine</th>
+                  <th width="140">Esito</th>
+                  <th>Dettaglio Messaggio</th>
+                </tr>
+              </thead>
+              <tbody id="log-table-body">
+                <!-- Rinvio log dinamico -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- SEZIONE 3: Storico delle Operazioni (Registro) -->
+      <div id="section-history" class="page-section hidden">
+        <section class="dashboard-card">
+          <div class="list-header" style="margin-bottom: 24px;">
+            <div class="list-summary">
+              <h3>Storico Operazioni</h3>
+              <p>Visualizza il registro delle esportazioni ed importazioni effettuate, consulta i dettagli ed elimina i vecchi log.</p>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-clear-all-history" style="border-color: var(--color-error); color: var(--color-error);">
+              <i data-lucide="trash-2"></i> Pulisci Storico
+            </button>
+          </div>
+
+          <div class="table-container">
+            <table class="orders-table" id="history-table" style="min-width: 100%;">
+              <thead>
+                <tr>
+                  <th width="130">Tipo</th>
+                  <th width="180">Data e Ora</th>
+                  <th width="280">Nome File / Dettagli</th>
+                  <th width="180">Riepilogo</th>
+                  <th width="150" class="text-right">Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body">
+                <tr class="empty-row">
+                  <td colspan="5">
+                    <div class="empty-state">
+                      <i data-lucide="history"></i>
+                      <p>Nessuna operazione registrata nello storico.</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Card per i dettagli del log (mostrata dinamicamente) -->
+        <section class="dashboard-card hidden" id="history-detail-card">
+          <div class="list-header" style="margin-bottom: 16px; border-bottom: 1px solid var(--card-border); padding-bottom: 12px;">
+            <div class="list-summary">
+              <h4 id="history-detail-title">Dettaglio Operazione</h4>
+              <p id="history-detail-subtitle">Data: --</p>
+            </div>
+            <button class="btn btn-outline btn-sm" id="btn-close-history-detail">
+              <i data-lucide="x"></i> Chiudi Dettagli
+            </button>
+          </div>
+          
+          <div class="table-container" style="max-height: 350px; border: 1px solid var(--card-border); border-radius: var(--border-radius-sm); background:#ffffff;">
+            <table class="log-table" id="history-detail-table">
+              <thead id="history-detail-thead">
+                <!-- Intestazione dinamica -->
+              </thead>
+              <tbody id="history-detail-tbody">
+                <!-- Righe dinamiche -->
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
 
     </main>

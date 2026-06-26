@@ -22,10 +22,34 @@ router.get('/prestashop', (req, res) => {
     res.json({
       baseUrl: settings.prestashop.baseUrl || '',
       apiKey: settingsStore.maskApiKey(settings.prestashop.apiKey),
+      enabledOrderStates: settings.prestashop.enabledOrderStates || [],
       configured: settingsStore.isConfigured()
     });
   } catch (error) {
     console.error('Error reading PrestaShop settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/settings/prestashop/states — save the enabled order states
+router.post('/prestashop/states', (req, res) => {
+  try {
+    const { enabledOrderStates } = req.body;
+
+    if (!Array.isArray(enabledOrderStates)) {
+      return res.status(400).json({ error: 'La lista degli stati non è valida.' });
+    }
+
+    const current = settingsStore.getSettings();
+    settingsStore.saveSettings({
+      baseUrl: current.prestashop.baseUrl,
+      apiKey: current.prestashop.apiKey,
+      enabledOrderStates: enabledOrderStates.map(Number)
+    });
+
+    res.json({ success: true, message: 'Stati dell\'ordine salvati correttamente.' });
+  } catch (error) {
+    console.error('Error saving order states:', error);
     res.status(500).json({ error: error.message });
   }
 });

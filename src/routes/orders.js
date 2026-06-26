@@ -36,11 +36,21 @@ router.get('/states', async (req, res) => {
   try {
     const psClient = settingsStore.getPrestaShopClient();
     await initializeOrderStatesCache(psClient);
-    const statesList = Object.entries(orderStatesCache).map(([id, stateObj]) => ({
+    let statesList = Object.entries(orderStatesCache).map(([id, stateObj]) => ({
       id: parseInt(id, 10),
       name: stateObj.name,
       color: stateObj.color
     })).sort((a, b) => a.id - b.id);
+
+    // Filtra gli stati abilitati se richiesto
+    if (req.query.filter === 'enabled') {
+      const settings = settingsStore.getSettings();
+      const enabledStates = settings.prestashop.enabledOrderStates;
+      if (Array.isArray(enabledStates) && enabledStates.length > 0) {
+        statesList = statesList.filter(s => enabledStates.includes(s.id));
+      }
+    }
+
     res.json(statesList);
   } catch (error) {
     console.error('Error in GET /api/orders/states:', error);
@@ -96,38 +106,53 @@ router.get('/', async (req, res) => {
       const idAddress = order.id_address_delivery;
 
       // Helper function to resolve customer name with local caching
-      const getCustomerName = async () => {
-        if (!idCustomer || idCustomer === '0') return 'Unknown Customer';
-        if (customerCache[idCustomer]) return customerCache[idCustomer];
+      const getCustomerDetails = async () => {
+        if (!idCustomer || idCustomer === '0') {
+          return { name: 'Unknown Customer', error: true };
+        }
+        if (customerCache[idCustomer]) {
+          return customerCache[idCustomer];
+        }
         try {
           const customer = await psClient.getCustomer(idCustomer);
           if (customer) {
-            const fullName = `${customer.firstname || ''} ${customer.lastname || ''}`.trim();
-            customerCache[idCustomer] = fullName;
-            return fullName;
+            const fullName = `${customer.firstname || ''} ${customer.lastname || ''}`.trim() || 'Unknown Customer';
+            const res = { name: fullName, error: false };
+            customerCache[idCustomer] = res;
+            return res;
           }
         } catch (err) {
           console.error(`Error resolving customer ${idCustomer}:`, err.message);
         }
-        return 'Unknown Customer';
+        const res = { name: 'Unknown Customer', error: true };
+        customerCache[idCustomer] = res;
+        return res;
       };
 
       // Helper function to resolve detailed address with local caching
       const getDeliveryDetails = async () => {
+        const fallback = {
+          street: '—',
+          city: '—',
+          province: '—',
+          country: '—',
+          error: true
+        };
+
         if (!idAddress || idAddress === '0') {
-          return {
-            street: '—',
-            city: '—',
-            province: '—',
-            country: '—'
-          };
+          return fallback;
         }
+
         try {
           let address = addressCache[idAddress];
+          let fetchError = false;
+
           if (!address) {
             address = await psClient.getAddress(idAddress);
             if (address) {
               addressCache[idAddress] = address;
+            } else {
+              fetchError = true;
             }
           }
 
@@ -148,6 +173,8 @@ router.get('/', async (req, res) => {
                 if (country && country.iso_code) {
                   countryIso = country.iso_code;
                   countryCache[address.id_country] = countryIso;
+                } else {
+                  fetchError = true;
                 }
               }
             }
@@ -163,32 +190,33 @@ router.get('/', async (req, res) => {
                 if (state && state.iso_code) {
                   stateAbbr = state.iso_code;
                   stateCache[address.id_state] = stateAbbr;
+                } else {
+                  fetchError = true;
                 }
               }
             }
             if (!stateAbbr) stateAbbr = '—';
 
+            // Also check if any key field is missing
+            const incomplete = !address.address1 || !address.city || !address.postcode || !countryIso;
+
             return {
               street,
               city,
               province: stateAbbr,
-              country: countryIso
+              country: countryIso,
+              error: fetchError || incomplete
             };
           }
         } catch (err) {
           console.error(`Error resolving address details for ${idAddress}:`, err.message);
         }
-        return {
-          street: '—',
-          city: '—',
-          province: '—',
-          country: '—'
-        };
+        return fallback;
       };
 
       // Execute both API fetches concurrently for this order
-      const [customerName, deliveryDetails] = await Promise.all([
-        getCustomerName(),
+      const [customerDetails, deliveryDetails] = await Promise.all([
+        getCustomerDetails(),
         getDeliveryDetails()
       ]);
 
@@ -210,11 +238,13 @@ router.get('/', async (req, res) => {
         reference: order.reference,
         date_add: order.date_add,
         total_paid_tax_incl: order.total_paid_tax_incl,
-        customer_name: customerName,
+        customer_name: customerDetails.name,
+        customer_error: customerDetails.error,
         delivery_address: deliveryDetails.street,
         delivery_city: deliveryDetails.city,
         delivery_province: deliveryDetails.province,
         delivery_country: deliveryDetails.country,
+        address_error: deliveryDetails.error,
         current_state: parseInt(order.current_state, 10),
         state_name: stateInfo.name,
         state_color: stateInfo.color,

@@ -83,19 +83,28 @@ document.addEventListener('DOMContentLoaded', () => {
   // Carica l'elenco degli stati da PrestaShop e popola il filtro dropdown
   async function loadOrderStates() {
     try {
-      const response = await fetch('/api/orders/states');
+      const response = await fetch('/api/orders/states?filter=enabled');
       if (response.ok) {
         const states = await response.json();
         const stateSelect = document.getElementById('filter-state');
         if (stateSelect && Array.isArray(states)) {
           stateSelect.innerHTML = '<option value="">Tutti gli stati</option>';
-          states.forEach(s => {
+          
+          const hasState2 = states.some(s => s.id === 2);
+          
+          states.forEach((s, index) => {
             const option = document.createElement('option');
             option.value = s.id;
             option.textContent = `${s.name} (ID ${s.id})`;
-            if (s.id === 2) {
+            
+            if (hasState2) {
+              if (s.id === 2) {
+                option.selected = true;
+              }
+            } else if (index === 0) {
               option.selected = true;
             }
+            
             stateSelect.appendChild(option);
           });
         }
@@ -342,6 +351,32 @@ document.addEventListener('DOMContentLoaded', () => {
           `).join('')
         : '<span class="text-muted">—</span>';
 
+      const customerHtml = order.customer_error
+        ? `<div style="display:inline-flex; align-items:center; gap:6px;" title="Attenzione: errore di caricamento cliente da PrestaShop o ID non valido">
+             <i data-lucide="alert-triangle" style="width:14px;height:14px;color:var(--fedex-orange);flex-shrink:0;"></i>
+             <span style="color:var(--text-secondary); font-style:italic;">${escapeHTML(order.customer_name)}</span>
+           </div>`
+        : escapeHTML(order.customer_name);
+
+      const addressHtml = order.address_error
+        ? `<div style="display:inline-flex; align-items:center; gap:6px;" title="Attenzione: dati di spedizione (via, nazione, cap) incompleti o non caricati correttamente">
+             <i data-lucide="alert-triangle" style="width:14px;height:14px;color:var(--fedex-orange);flex-shrink:0;"></i>
+             <span style="color:var(--text-secondary); font-style:italic;">${escapeHTML(order.delivery_address)}</span>
+           </div>`
+        : escapeHTML(order.delivery_address);
+
+      const cityHtml = order.address_error
+        ? `<span style="color:var(--text-secondary); font-style:italic;">${escapeHTML(order.delivery_city)}</span>`
+        : escapeHTML(order.delivery_city);
+
+      const provHtml = order.address_error
+        ? `<span style="color:var(--text-secondary); font-style:italic;">${escapeHTML(order.delivery_province)}</span>`
+        : escapeHTML(order.delivery_province);
+
+      const countryHtml = order.address_error
+        ? `<span style="color:var(--text-secondary); font-style:italic;">${escapeHTML(order.delivery_country)}</span>`
+        : escapeHTML(order.delivery_country);
+
       return `
         <tr data-id="${order.id}">
           <td>
@@ -350,11 +385,11 @@ document.addEventListener('DOMContentLoaded', () => {
           <td>${order.id}</td>
           <td><span class="order-ref-badge">${order.reference}</span></td>
           <td>${formattedDate}</td>
-          <td>${escapeHTML(order.customer_name)}</td>
-          <td>${escapeHTML(order.delivery_address)}</td>
-          <td>${escapeHTML(order.delivery_city)}</td>
-          <td class="text-center">${escapeHTML(order.delivery_province)}</td>
-          <td class="text-center">${escapeHTML(order.delivery_country)}</td>
+          <td>${customerHtml}</td>
+          <td>${addressHtml}</td>
+          <td>${cityHtml}</td>
+          <td class="text-center">${provHtml}</td>
+          <td class="text-center">${countryHtml}</td>
           <td><div class="products-cell">${productsHtml}</div></td>
           <td><span class="badge state-badge">${stateName}</span></td>
           <td class="text-right">€ ${parseFloat(order.total_paid_tax_incl).toFixed(2)}</td>
@@ -603,6 +638,697 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 6000);
   }
 
+  // --- SEZIONE IMPORTAZIONE TRACKING FEDEX ---
+
+  // Navigazione Tab
+  const menuHistory = document.getElementById('menu-history');
+  const sectionHistory = document.getElementById('section-history');
+  const mainHeaderTitle = document.querySelector('.header-title h1');
+  const mainHeaderSubtitle = document.querySelector('.header-title p');
+
+  menuOrders.addEventListener('click', () => {
+    menuOrders.classList.add('active');
+    menuImportTracking.classList.remove('active');
+    if (menuHistory) menuHistory.classList.remove('active');
+    sectionOrders.classList.remove('hidden');
+    sectionImportTracking.classList.add('hidden');
+    if (sectionHistory) sectionHistory.classList.add('hidden');
+    mainHeaderTitle.textContent = 'Gestione Spedizioni PrestaShop';
+    mainHeaderSubtitle.textContent = 'Seleziona gli ordini da dagimarket.com e compila l\'Excel per la spedizione batch FedEx';
+  });
+
+  menuImportTracking.addEventListener('click', () => {
+    menuOrders.classList.remove('active');
+    menuImportTracking.classList.add('active');
+    if (menuHistory) menuHistory.classList.remove('active');
+    sectionOrders.classList.add('hidden');
+    sectionImportTracking.classList.remove('hidden');
+    if (sectionHistory) sectionHistory.classList.add('hidden');
+    mainHeaderTitle.textContent = 'Importazione Tracking FedEx';
+    mainHeaderSubtitle.textContent = 'Carica il file con i tracking di ritorno generati da FedEx per associarli in PrestaShop';
+    
+    // Nascondi footer di selezione ordini se attivo
+    if (actionFooter) {
+      actionFooter.classList.add('hidden');
+    }
+  });
+
+  if (menuHistory && sectionHistory) {
+    menuHistory.addEventListener('click', () => {
+      menuOrders.classList.remove('active');
+      menuImportTracking.classList.remove('active');
+      menuHistory.classList.add('active');
+      sectionOrders.classList.add('hidden');
+      sectionImportTracking.classList.add('hidden');
+      sectionHistory.classList.remove('hidden');
+      mainHeaderTitle.textContent = 'Storico Operazioni';
+      mainHeaderSubtitle.textContent = 'Visualizza il registro delle esportazioni ed importazioni effettuate';
+      
+      if (actionFooter) {
+        actionFooter.classList.add('hidden');
+      }
+      
+      loadHistory();
+    });
+  }
+
+  // Gestione File Upload (Drag & Drop)
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  
+  let currentFileData = null;
+  let currentFileName = '';
+
+  if (dropZone) {
+    dropZone.addEventListener('click', () => {
+      const actualInput = document.getElementById('file-input');
+      if (actualInput) actualInput.click();
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) {
+        handleFileSelected(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFileSelected(e.target.files[0]);
+      }
+    });
+  }
+
+  async function handleFileSelected(file) {
+    const validExtensions = ['xlsx', 'csv'];
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    
+    if (!validExtensions.includes(fileExt)) {
+      showToast('Errore file', 'Carica solo file in formato Excel (.xlsx) o CSV (.csv)', 'error');
+      return;
+    }
+
+    currentFileName = file.name;
+    
+    // Leggi file come base64 per inviarlo al backend
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+      const dataUrl = e.target.result;
+      currentFileData = dataUrl.split(',')[1];
+      await parseFile(currentFileData, currentFileName);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Interazione API: parse-file
+  const importStep1 = document.getElementById('import-step-1');
+  const importStep2 = document.getElementById('import-step-2');
+  const importStep3 = document.getElementById('import-step-3');
+  const mapReferenceCol = document.getElementById('map-reference-col');
+  const mapTrackingCol = document.getElementById('map-tracking-col');
+  const previewTableHead = document.getElementById('preview-table-head');
+  const previewTableBody = document.getElementById('preview-table-body');
+
+  async function parseFile(fileData, fileName) {
+    if (!dropZone) return;
+    
+    const originalZoneHTML = dropZone.innerHTML;
+    dropZone.innerHTML = `
+      <span class="spinner" style="width:36px;height:36px;margin-bottom:16px;"></span>
+      <h3>Lettura del file in corso...</h3>
+      <p>Estrazione delle colonne e dell'anteprima</p>
+    `;
+    
+    try {
+      const response = await fetch('/api/tracking/parse-file', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ fileData, fileName })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Errore durante la lettura del file.');
+      }
+
+      const result = await response.json();
+      renderMappingStep(result);
+      
+    } catch (error) {
+      console.error(error);
+      showToast('Errore caricamento', error.message, 'error');
+      resetImportStep1();
+    }
+  }
+
+  function resetImportStep1() {
+    if (!dropZone) return;
+    dropZone.innerHTML = `
+      <i data-lucide="file-up"></i>
+      <h3>Trascina il file qui o clicca per sfogliare</h3>
+      <p>Supporta formati Excel (.xlsx) e CSV (.csv)</p>
+      <input type="file" id="file-input" class="hidden-file-input" accept=".xlsx,.csv">
+    `;
+    lucide.createIcons();
+    
+    // Riassegna il listener sul nuovo input file creato
+    const newFileInput = document.getElementById('file-input');
+    if (newFileInput) {
+      newFileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFileSelected(e.target.files[0]);
+        }
+      });
+    }
+  }
+
+  function renderMappingStep(data) {
+    const { headers, preview, autoMapped } = data;
+    
+    // Popola i menu a tendina
+    mapReferenceCol.innerHTML = '';
+    mapTrackingCol.innerHTML = '';
+    
+    headers.forEach(h => {
+      const opt1 = document.createElement('option');
+      opt1.value = h;
+      opt1.textContent = h;
+      if (h === autoMapped.referenceColumn) opt1.selected = true;
+      mapReferenceCol.appendChild(opt1);
+      
+      const opt2 = document.createElement('option');
+      opt2.value = h;
+      opt2.textContent = h;
+      if (h === autoMapped.trackingColumn) opt2.selected = true;
+      mapTrackingCol.appendChild(opt2);
+    });
+
+    // Intestazione tabella anteprima
+    previewTableHead.innerHTML = '';
+    const trHead = document.createElement('tr');
+    headers.forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      trHead.appendChild(th);
+    });
+    previewTableHead.appendChild(trHead);
+
+    // Righe tabella anteprima
+    previewTableBody.innerHTML = '';
+    if (preview.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="${headers.length}" class="text-center" style="color:var(--text-muted); padding: 24px 0;">Nessun dato rilevato per l'anteprima.</td>`;
+      previewTableBody.appendChild(tr);
+    } else {
+      preview.forEach(row => {
+        const tr = document.createElement('tr');
+        headers.forEach(h => {
+          const td = document.createElement('td');
+          td.textContent = row[h] || '';
+          tr.appendChild(td);
+        });
+        previewTableBody.appendChild(tr);
+      });
+    }
+
+    importStep1.classList.add('hidden');
+    importStep2.classList.remove('hidden');
+    importStep3.classList.add('hidden');
+    lucide.createIcons();
+  }
+
+  // Pulsanti Step 2
+  const btnCancelMapping = document.getElementById('btn-cancel-mapping');
+  const btnStartImport = document.getElementById('btn-start-import');
+
+  if (btnCancelMapping) {
+    btnCancelMapping.addEventListener('click', () => {
+      importStep1.classList.remove('hidden');
+      importStep2.classList.add('hidden');
+      importStep3.classList.add('hidden');
+      resetImportStep1();
+    });
+  }
+
+  if (btnStartImport) {
+    btnStartImport.addEventListener('click', async () => {
+      const refCol = mapReferenceCol.value;
+      const trackCol = mapTrackingCol.value;
+
+      if (!refCol || !trackCol) {
+        showToast('Errore mappatura', 'Seleziona entrambe le colonne obbligatorie.', 'error');
+        return;
+      }
+
+      if (refCol === trackCol) {
+        showToast('Errore mappatura', 'La colonna Riferimento e la colonna Codice Tracking non possono coincidere.', 'warning');
+        return;
+      }
+
+      btnStartImport.disabled = true;
+      const originalContent = btnStartImport.innerHTML;
+      btnStartImport.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Importazione in corso...';
+
+      try {
+        const response = await fetch('/api/tracking/import', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            fileData: currentFileData,
+            fileName: currentFileName,
+            referenceColumn: refCol,
+            trackingColumn: trackCol
+          })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Errore durante l\'aggiornamento dei tracking.');
+        }
+
+        const result = await response.json();
+        renderResultsStep(result);
+        
+      } catch (error) {
+        console.error(error);
+        showToast('Importazione Fallita', error.message, 'error');
+      } finally {
+        btnStartImport.disabled = false;
+        btnStartImport.innerHTML = originalContent;
+      }
+    });
+  }
+
+  // Elementi Step 3
+  const summaryTotal = document.getElementById('summary-total');
+  const summarySuccess = document.getElementById('summary-success');
+  const summaryWarning = document.getElementById('summary-warning');
+  const summaryError = document.getElementById('summary-error');
+  const logTableBody = document.getElementById('log-table-body');
+  const btnResetImport = document.getElementById('btn-reset-import');
+
+  function renderResultsStep(result) {
+    const { summary, details } = result;
+    
+    // Aggiorna contatori
+    summaryTotal.textContent = summary.totalProcessed;
+    summarySuccess.textContent = summary.successCount;
+    summaryWarning.textContent = summary.warningCount;
+    summaryError.textContent = summary.errorCount;
+
+    // Popola log delle operazioni
+    logTableBody.innerHTML = '';
+    
+    const allLogs = [];
+    
+    details.success.forEach(item => {
+      allLogs.push({
+        row: item.row,
+        reference: item.reference,
+        type: 'success',
+        message: item.message
+      });
+    });
+
+    details.warnings.forEach(item => {
+      allLogs.push({
+        row: item.row,
+        reference: item.reference,
+        type: 'warning',
+        message: item.message
+      });
+    });
+
+    details.errors.forEach(item => {
+      allLogs.push({
+        row: item.row,
+        reference: item.reference,
+        type: 'error',
+        message: item.message
+      });
+    });
+
+    // Ordina per numero di riga del file
+    allLogs.sort((a, b) => a.row - b.row);
+
+    if (allLogs.length === 0) {
+      logTableBody.innerHTML = '<tr><td colspan="4" class="text-center" style="color:var(--text-muted); padding:20px;">Nessun tracciato di log registrato.</td></tr>';
+    } else {
+      allLogs.forEach(log => {
+        const tr = document.createElement('tr');
+        
+        let tagClass = 'success';
+        let tagText = 'Successo';
+        if (log.type === 'warning') {
+          tagClass = 'warning';
+          tagText = 'Avviso';
+        } else if (log.type === 'error') {
+          tagClass = 'error';
+          tagText = 'Errore';
+        }
+
+        tr.innerHTML = `
+          <td class="text-center font-semibold" style="color: var(--text-secondary);">${log.row}</td>
+          <td><code class="font-mono">${escapeHTML(log.reference)}</code></td>
+          <td><span class="log-tag ${tagClass}">${tagText}</span></td>
+          <td class="font-medium" style="color: var(--text-secondary);">${escapeHTML(log.message)}</td>
+        `;
+        logTableBody.appendChild(tr);
+      });
+    }
+
+    importStep1.classList.add('hidden');
+    importStep2.classList.add('hidden');
+    importStep3.classList.remove('hidden');
+    lucide.createIcons();
+
+    showToast(
+      'Importazione Completata',
+      `Processati ${summary.totalProcessed} elementi: ${summary.successCount} riusciti, ${summary.warningCount + summary.errorCount} anomalie.`,
+      summary.errorCount > 0 ? 'error' : (summary.warningCount > 0 ? 'warning' : 'success')
+    );
+  }
+
+  if (btnResetImport) {
+    btnResetImport.addEventListener('click', () => {
+      importStep1.classList.remove('hidden');
+      importStep2.classList.add('hidden');
+      importStep3.classList.add('hidden');
+      resetImportStep1();
+    });
+  }
+
+  // Button Close Detail
+  const btnCloseHistoryDetail = document.getElementById('btn-close-history-detail');
+  if (btnCloseHistoryDetail) {
+    btnCloseHistoryDetail.addEventListener('click', () => {
+      const detailCard = document.getElementById('history-detail-card');
+      if (detailCard) detailCard.classList.add('hidden');
+    });
+  }
+
+  // Button Clear All History
+  const btnClearAllHistory = document.getElementById('btn-clear-all-history');
+  if (btnClearAllHistory) {
+    btnClearAllHistory.addEventListener('click', () => {
+      if (confirm('Sei assolutamente sicuro di voler eliminare TUTTO lo storico delle operazioni? Questa azione eliminerà permanentemente tutti i log e tutti i file Excel salvati sul server e non può essere annullata.')) {
+        clearAllHistory();
+      }
+    });
+  }
+
+  async function loadHistory() {
+    const tableBody = document.getElementById('history-table-body');
+    const detailCard = document.getElementById('history-detail-card');
+    if (!tableBody) return;
+
+    if (detailCard) detailCard.classList.add('hidden'); // Nascondi dettagli precedenti
+
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="5" class="text-center" style="padding: 30px;">
+          <span class="spinner" style="width:24px;height:24px;margin: 0 auto;display:block;"></span>
+          Caricamento storico...
+        </td>
+      </tr>
+    `;
+
+    try {
+      const response = await fetch('/api/history');
+      if (!response.ok) throw new Error('Errore nel recupero dello storico.');
+
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        tableBody.innerHTML = `
+          <tr class="empty-row">
+            <td colspan="5">
+              <div class="empty-state">
+                <i data-lucide="history"></i>
+                <p>Nessuna operazione registrata nello storico.</p>
+              </div>
+            </td>
+          </tr>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      tableBody.innerHTML = '';
+      data.forEach(item => {
+        const tr = document.createElement('tr');
+        
+        // Date formatting
+        const dateObj = new Date(item.timestamp);
+        const formattedDate = dateObj.toLocaleString('it-IT', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+
+        // Type Badge
+        const isExport = item.type === 'export';
+        const badgeClass = isExport ? 'badge-export' : 'badge-import';
+        const badgeText = isExport ? 'Esportazione' : 'Importazione';
+
+        // Summary details
+        let summaryText = '';
+        if (isExport) {
+          summaryText = `${item.count} ordini esportati`;
+        } else {
+          const succ = item.summary ? item.summary.successCount : 0;
+          const warn = item.summary ? item.summary.warningCount : 0;
+          const errs = item.summary ? item.summary.errorCount : 0;
+          summaryText = `${succ} riusciti, ${warn} avvisi, ${errs} errori`;
+        }
+
+        // Actions buttons
+        let actionsHTML = '';
+        if (isExport && item.fileName) {
+          actionsHTML += `
+            <a href="/api/history/download/${encodeURIComponent(item.fileName)}" class="btn btn-outline btn-sm btn-icon-only" download title="Scarica file Excel" style="margin-right: 6px; display: inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0;">
+              <i data-lucide="download" style="width:16px; height:16px;"></i>
+            </a>
+          `;
+        }
+        
+        actionsHTML += `
+          <button class="btn btn-outline btn-sm btn-icon-only btn-view-details" data-id="${item.id}" title="Visualizza dettagli log" style="margin-right: 6px; display: inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0;">
+            <i data-lucide="eye" style="width:16px; height:16px;"></i>
+          </button>
+          <button class="btn btn-outline btn-sm btn-icon-only btn-delete-entry" style="border-color: var(--color-error); color: var(--color-error); display: inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0;" data-id="${item.id}" title="Elimina operazione">
+            <i data-lucide="trash-2" style="width:16px; height:16px;"></i>
+          </button>
+        `;
+
+        tr.innerHTML = `
+          <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+          <td>${formattedDate}</td>
+          <td>
+            <div style="font-weight: 600; color: var(--text-primary); font-size: 0.88rem; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(item.fileName || 'Log Importazione')}</div>
+            <div style="font-size: 0.72rem; color: var(--text-muted);">${item.id}</div>
+          </td>
+          <td class="font-medium" style="color: var(--text-secondary);">${summaryText}</td>
+          <td class="text-right">${actionsHTML}</td>
+        `;
+
+        // Event listener for view details
+        tr.querySelector('.btn-view-details').addEventListener('click', () => {
+          showHistoryDetails(item);
+        });
+
+        // Event listener for delete entry
+        tr.querySelector('.btn-delete-entry').addEventListener('click', async () => {
+          if (confirm('Sei sicuro di voler eliminare questa operazione dallo storico? Se si tratta di un\'esportazione, verrà eliminato anche il relativo file Excel dal server.')) {
+            await deleteHistoryEntry(item.id);
+          }
+        });
+
+        tableBody.appendChild(tr);
+      });
+
+      lucide.createIcons();
+
+    } catch (error) {
+      console.error(error);
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-center" style="padding: 30px; color: var(--color-error);">
+            <i data-lucide="alert-circle" style="margin: 0 auto 8px; display:block;"></i>
+            Impossibile caricare lo storico: ${escapeHTML(error.message)}
+          </td>
+        </tr>
+      `;
+      lucide.createIcons();
+    }
+  }
+
+  // Show details of a history log
+  function showHistoryDetails(item) {
+    const detailCard = document.getElementById('history-detail-card');
+    const detailTitle = document.getElementById('history-detail-title');
+    const detailSubtitle = document.getElementById('history-detail-subtitle');
+    const detailThead = document.getElementById('history-detail-thead');
+    const detailTbody = document.getElementById('history-detail-tbody');
+
+    if (!detailCard || !detailTbody) return;
+
+    detailCard.classList.remove('hidden');
+    
+    // Set title and date
+    const dateObj = new Date(item.timestamp);
+    detailTitle.textContent = item.type === 'export' ? 'Dettaglio Esportazione FedEx' : 'Dettaglio Importazione Tracking';
+    detailSubtitle.textContent = `Data operazione: ${dateObj.toLocaleString('it-IT')} | ID: ${item.id}`;
+
+    detailTbody.innerHTML = '';
+
+    if (item.type === 'export') {
+      // Headers for export details
+      detailThead.innerHTML = `
+        <tr>
+          <th width="100" class="text-center">Indice</th>
+          <th>Riferimento Ordine PrestaShop</th>
+        </tr>
+      `;
+
+      if (item.details && item.details.length > 0) {
+        item.details.forEach((ref, index) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="text-center font-semibold">${index + 1}</td>
+            <td><code class="font-mono">${escapeHTML(ref)}</code></td>
+          `;
+          detailTbody.appendChild(tr);
+        });
+      } else {
+        detailTbody.innerHTML = '<tr><td colspan="2" class="text-center">Nessun ordine registrato.</td></tr>';
+      }
+
+      // Append warnings if any
+      if (item.warnings && item.warnings.length > 0) {
+        const warningTr = document.createElement('tr');
+        warningTr.innerHTML = `
+          <td colspan="2" style="background: rgba(245, 158, 11, 0.05); padding: 16px;">
+            <div style="font-weight: 700; color: var(--color-warning); margin-bottom: 8px;">
+              <i data-lucide="alert-triangle" style="width:16px; height:16px; display:inline-block; vertical-align:middle; margin-right:4px;"></i>
+              Avvisi riscontrati durante l'esportazione:
+            </div>
+            <ul style="margin-left: 20px; font-size: 0.85rem; color: var(--text-secondary); list-style-type: disc;">
+              ${item.warnings.map(w => `<li>${escapeHTML(w)}</li>`).join('')}
+            </ul>
+          </td>
+        `;
+        detailTbody.appendChild(warningTr);
+        lucide.createIcons();
+      }
+    } else {
+      // Headers for import details
+      detailThead.innerHTML = `
+        <tr>
+          <th width="100" class="text-center">Riga File</th>
+          <th width="180">Riferimento Ordine</th>
+          <th width="130">Esito</th>
+          <th>Messaggio di Dettaglio</th>
+        </tr>
+      `;
+
+      const allLogs = [];
+      const details = item.details || { success: [], warnings: [], errors: [] };
+
+      (details.success || []).forEach(l => {
+        allLogs.push({ row: l.row, reference: l.reference, type: 'success', message: l.message });
+      });
+      (details.warnings || []).forEach(l => {
+        allLogs.push({ row: l.row, reference: l.reference, type: 'warning', message: l.message });
+      });
+      (details.errors || []).forEach(l => {
+        allLogs.push({ row: l.row, reference: l.reference, type: 'error', message: l.message });
+      });
+
+      allLogs.sort((a, b) => a.row - b.row);
+
+      if (allLogs.length > 0) {
+        allLogs.forEach(log => {
+          const tr = document.createElement('tr');
+          let tagClass = 'success';
+          let tagText = 'Successo';
+          if (log.type === 'warning') {
+            tagClass = 'warning';
+            tagText = 'Avviso';
+          } else if (log.type === 'error') {
+            tagClass = 'error';
+            tagText = 'Errore';
+          }
+
+          tr.innerHTML = `
+            <td class="text-center font-semibold" style="color: var(--text-secondary);">${log.row}</td>
+            <td><code class="font-mono">${escapeHTML(log.reference)}</code></td>
+            <td><span class="log-tag ${tagClass}">${tagText}</span></td>
+            <td class="font-medium" style="color: var(--text-secondary);">${escapeHTML(log.message)}</td>
+          `;
+          detailTbody.appendChild(tr);
+        });
+      } else {
+        detailTbody.innerHTML = '<tr><td colspan="4" class="text-center">Nessun log dettagliato trovato.</td></tr>';
+      }
+    }
+
+    // Scroll details card into view
+    detailCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Delete a history entry
+  async function deleteHistoryEntry(id) {
+    try {
+      const response = await fetch(`/api/history/${id}`, { method: 'DELETE' });
+      const result = await response.json();
+
+      if (response.ok) {
+        showToast('Successo', result.message || 'Operazione eliminata.', 'success');
+        await loadHistory();
+      } else {
+        showToast('Errore', result.error || 'Impossibile eliminare l\'operazione.', 'error');
+      }
+    } catch (e) {
+      showToast('Errore', 'Errore di rete: impossibile eliminare l\'operazione.', 'error');
+    }
+  }
+
+  // Clear all history
+  async function clearAllHistory() {
+    try {
+      const response = await fetch('/api/history', { method: 'DELETE' });
+      const result = await response.json();
+
+      if (response.ok) {
+        showToast('Successo', result.message || 'Storico ripulito.', 'success');
+        await loadHistory();
+      } else {
+        showToast('Errore', result.error || 'Impossibile svuotare lo storico.', 'error');
+      }
+    } catch (e) {
+      showToast('Errore', 'Errore di rete: impossibile svuotare lo storico.', 'error');
+    }
+  }
+
   // Utility Escaping HTML
   function escapeHTML(str) {
     if (!str) return '';
@@ -616,6 +1342,5 @@ document.addEventListener('DOMContentLoaded', () => {
       }[tag] || tag)
     );
   }
-
-  // L'avvio iniziale viene gestito da initializeApp()
 });
+

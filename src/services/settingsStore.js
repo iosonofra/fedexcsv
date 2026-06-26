@@ -21,7 +21,8 @@ function getSettings() {
   let settings = {
     prestashop: {
       baseUrl: config.prestashop.baseUrl || '',
-      apiKey: config.prestashop.apiKey || ''
+      apiKey: config.prestashop.apiKey || '',
+      enabledOrderStates: []
     },
     shipper: {
       name: config.shipper.name || '',
@@ -43,6 +44,7 @@ function getSettings() {
       if (fileData.prestashop) {
         if (fileData.prestashop.baseUrl) settings.prestashop.baseUrl = fileData.prestashop.baseUrl;
         if (fileData.prestashop.apiKey) settings.prestashop.apiKey = fileData.prestashop.apiKey;
+        if (fileData.prestashop.enabledOrderStates) settings.prestashop.enabledOrderStates = fileData.prestashop.enabledOrderStates;
       }
       if (fileData.shipper) {
         settings.shipper = {
@@ -74,7 +76,8 @@ function saveSettings(prestashopData) {
   const toSave = {
     prestashop: {
       baseUrl: prestashopData.baseUrl || current.prestashop.baseUrl,
-      apiKey: prestashopData.apiKey || current.prestashop.apiKey
+      apiKey: prestashopData.apiKey || current.prestashop.apiKey,
+      enabledOrderStates: prestashopData.enabledOrderStates !== undefined ? prestashopData.enabledOrderStates : (current.prestashop.enabledOrderStates || [])
     },
     shipper: current.shipper
   };
