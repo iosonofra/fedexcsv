@@ -113,10 +113,39 @@ async function buildFedExExcel(rows) {
 
 async function getFedExDefaults() {
   const wb = new ExcelJS.Workbook();
-  const templatePath = path.join(__dirname, '../../personal-example-batch-upload.xlsx');
+  let templatePath = path.join(__dirname, '../../personal-example-batch-upload.xlsx');
   
   if (!fs.existsSync(templatePath)) {
-    throw new Error('Template file personal-example-batch-upload.xlsx not found in workspace root.');
+    templatePath = path.join(__dirname, '../personal-example-batch-upload.xlsx');
+  }
+
+  if (!fs.existsSync(templatePath)) {
+    console.warn('Template file personal-example-batch-upload.xlsx not found. Using default values.');
+    return {
+      reference: '',
+      serviceType: 'FEDEX_REGIONAL_ECONOMY_FREIGHT',
+      shipmentType: 'OUTBOUND',
+      source: 'ECOMMERCE',
+      senderContactName: 'dvg commerce c/o logitech',
+      senderCompany: 'dvg commerce c/o logitech',
+      senderContactNumber: '0290834163',
+      senderLine1: 'VIA DELLE INDUSTRIE 14',
+      senderPostcode: '20088',
+      senderCity: 'ROSATE',
+      senderCountry: 'IT',
+      numberOfPackages: 1,
+      packageWeight: 70,
+      weightUnits: 'KGS',
+      length: 80,
+      width: 60,
+      height: 100,
+      etdEnabled: 'Y',
+      baseRate: 478.80,
+      packageType: 'YOUR_PACKAGING',
+      currencyType: 'EUR',
+      commodityType: 'ITEMS',
+      itemDescription: 'elettronica'
+    };
   }
 
   await wb.xlsx.readFile(templatePath);

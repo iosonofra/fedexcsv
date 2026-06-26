@@ -217,7 +217,7 @@ body {
 }
 
 .shipper-settings-content {
-  max-height: 500px;
+  max-height: 800px;
   overflow: hidden;
   transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
   opacity: 1;
