@@ -233,8 +233,14 @@ router.post('/', async (req, res) => {
 
     const workbook = await buildFedExExcel(rows);
 
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const timePart = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    const filename = `spedizioni_fedex_${datePart}_${timePart}.xlsx`;
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=spedizioni_fedex.xlsx');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
     
     // Add custom header with warnings (JSON string)
     if (warnings.length > 0) {

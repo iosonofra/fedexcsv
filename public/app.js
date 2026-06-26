@@ -528,7 +528,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      a.download = `spedizioni_fedex_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const timePart = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      
+      a.download = `spedizioni_fedex_${datePart}_${timePart}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
