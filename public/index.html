@@ -117,6 +117,10 @@
       </nav>
 
       <div class="sidebar-footer">
+        <a href="/settings.html" class="example-template-link">
+          <i data-lucide="settings"></i>
+          <span>Impostazioni</span>
+        </a>
         <a href="/templates/fedex_example.xlsx" class="example-template-link" download>
           <i data-lucide="file-spreadsheet"></i>
           <span>Scarica modello Excel</span>
@@ -266,6 +270,20 @@
       </div>
 
     </main>
+  </div>
+
+  <!-- Setup Overlay (primo avvio senza credenziali) -->
+  <div class="setup-overlay hidden" id="setup-overlay">
+    <div class="setup-overlay-card">
+      <div class="brand-logo" style="margin: 0 auto 20px; width: 56px; height: 56px;">
+        <i data-lucide="truck" style="color: #fff; width: 28px; height: 28px;"></i>
+      </div>
+      <h2>Benvenuto in FedEx Link</h2>
+      <p>Per iniziare, configura la connessione al webservice PrestaShop nella pagina impostazioni.</p>
+      <a href="/settings.html" class="btn btn-primary" style="margin-top: 20px; width: 100%; justify-content: center;">
+        <i data-lucide="settings"></i> Configura Impostazioni
+      </a>
+    </div>
   </div>
 
   <script src="app.js"></script>

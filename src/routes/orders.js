@@ -1,9 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const PrestaShopClient = require('../services/prestashop');
-const config = require('../config');
-
-const psClient = new PrestaShopClient(config.prestashop.baseUrl, config.prestashop.apiKey);
+const settingsStore = require('../services/settingsStore');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -37,6 +34,7 @@ async function getOrderStateName(stateId, client) {
 
 router.get('/states', async (req, res) => {
   try {
+    const psClient = settingsStore.getPrestaShopClient();
     await initializeOrderStatesCache(psClient);
     const statesList = Object.entries(orderStatesCache).map(([id, stateObj]) => ({
       id: parseInt(id, 10),
@@ -52,6 +50,8 @@ router.get('/states', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
+    const psClient = settingsStore.getPrestaShopClient();
+    await initializeOrderStatesCache(psClient);
     const { reference, state, date_from, date_to } = req.query;
 
     // Use a small limit of 5 on initial load for speed, but allow 100+ when active search filters are applied
@@ -229,4 +229,10 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Esposta per invalidare la cache quando cambiano le credenziali
+function resetOrderStatesCache() {
+  orderStatesCache = null;
+}
+
 module.exports = router;
+module.exports.resetOrderStatesCache = resetOrderStatesCache;

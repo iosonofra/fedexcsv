@@ -37,6 +37,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Carica i dati predefiniti, gli stati ordine ed esegui la ricerca iniziale
   async function initializeApp() {
+    // Verifica se PrestaShop è configurato
+    try {
+      const configRes = await fetch('/api/settings/prestashop');
+      if (configRes.ok) {
+        const configData = await configRes.json();
+        const overlay = document.getElementById('setup-overlay');
+        if (!configData.configured && overlay) {
+          overlay.classList.remove('hidden');
+          lucide.createIcons();
+          return; // Non caricare ordini se non configurato
+        }
+      }
+    } catch (e) {
+      console.error('Errore nel controllo configurazione:', e);
+    }
+
     await loadOrderStates();
     await loadInitialDefaults();
     handleSearch();
@@ -124,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (defaultService && data.serviceType) defaultService.value = data.serviceType;
           if (defaultPackage && data.packageType) defaultPackage.value = data.packageType;
 
-          // Imposta i valori predefiniti del mittente
+          // Imposta i valori predefiniti del mittente come fallback iniziale
           if (shipperInputs.name && data.senderContactName) shipperInputs.name.value = data.senderContactName;
           if (shipperInputs.company && data.senderCompany) shipperInputs.company.value = data.senderCompany;
           if (shipperInputs.address1 && data.senderLine1) shipperInputs.address1.value = data.senderLine1;
@@ -138,30 +154,72 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Impossibile caricare i valori predefiniti dal server:', e);
     }
 
-    // Carica eventuali override personalizzati salvati dall'utente in LocalStorage
-    const saved = localStorage.getItem('fedex_shipper_settings');
-    if (saved) {
-      try {
-        const config = JSON.parse(saved);
-        Object.keys(shipperInputs).forEach(key => {
-          if (shipperInputs[key] && config[key] !== undefined) {
-            shipperInputs[key].value = config[key];
-          }
-        });
-      } catch (e) {
-        console.error('Errore nel parsing delle impostazioni mittente salvate:', e);
+    // Carica la configurazione del mittente salvata persistente lato server
+    try {
+      const response = await fetch('/api/settings/shipper');
+      if (response.ok) {
+        const shipperData = await response.json();
+        if (shipperData && Object.keys(shipperData).length > 0) {
+          if (shipperData.name) shipperInputs.name.value = shipperData.name;
+          if (shipperData.company !== undefined) shipperInputs.company.value = shipperData.company;
+          if (shipperData.address1) shipperInputs.address1.value = shipperData.address1;
+          if (shipperData.city) shipperInputs.city.value = shipperData.city;
+          if (shipperData.zip) shipperInputs.zip.value = shipperData.zip;
+          if (shipperData.country) shipperInputs.country.value = shipperData.country;
+          if (shipperData.phone) shipperInputs.phone.value = shipperData.phone;
+        }
       }
+    } catch (e) {
+      console.error('Errore nel caricamento dei dati mittente dal server:', e);
     }
   }
 
-  // Salva impostazioni in localStorage
-  function saveShipperSettings() {
+  // Salva impostazioni sul server
+  async function saveShipperSettings() {
     const settings = {};
+    let missingField = false;
+
+    // I campi obbligatori per il mittente sono nome, indirizzo, città, CAP, paese, telefono
+    const mandatory = ['name', 'address1', 'city', 'zip', 'country', 'phone'];
+
     Object.keys(shipperInputs).forEach(key => {
-      settings[key] = shipperInputs[key].value.trim();
+      const val = shipperInputs[key].value.trim();
+      settings[key] = val;
+      if (mandatory.includes(key) && !val) {
+        missingField = true;
+      }
     });
-    localStorage.setItem('fedex_shipper_settings', JSON.stringify(settings));
-    showToast('Successo', 'Dati mittente salvati correttamente!', 'success');
+
+    if (missingField) {
+      showToast('Errore', 'Compila tutti i campi obbligatori del mittente (Nome, Indirizzo 1, Città, CAP, Paese e Telefono).', 'error');
+      return;
+    }
+
+    saveShipperBtn.disabled = true;
+    const originalContent = saveShipperBtn.innerHTML;
+    saveShipperBtn.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Salvataggio...';
+
+    try {
+      const response = await fetch('/api/settings/shipper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showToast('Successo', 'Dati mittente salvati correttamente sul server!', 'success');
+      } else {
+        showToast('Errore', data.error || 'Impossibile salvare i dati mittente.', 'error');
+      }
+    } catch (e) {
+      showToast('Errore', 'Errore di rete: impossibile salvare i dati.', 'error');
+    } finally {
+      saveShipperBtn.disabled = false;
+      saveShipperBtn.innerHTML = originalContent;
+      lucide.createIcons();
+    }
   }
 
   // Recupera i dati correnti del mittente da inviare alle API

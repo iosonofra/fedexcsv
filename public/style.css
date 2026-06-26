@@ -810,3 +810,50 @@ input[type="checkbox"] {
   text-overflow: ellipsis;
   flex: 1;
 }
+
+/* Setup Overlay — First Run */
+.setup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.4s ease forwards;
+}
+
+.setup-overlay.hidden {
+  display: none !important;
+}
+
+.setup-overlay-card {
+  background: #fff;
+  border-radius: var(--border-radius-lg);
+  padding: 48px 40px;
+  max-width: 440px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.setup-overlay-card h2 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.setup-overlay-card p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+

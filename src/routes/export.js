@@ -1,15 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const PrestaShopClient = require('../services/prestashop');
 const { buildFedExExcel, getFedExDefaults } = require('../services/fedexExcel');
 const config = require('../config');
-
-const psClient = new PrestaShopClient(config.prestashop.baseUrl, config.prestashop.apiKey);
+const settingsStore = require('../services/settingsStore');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 router.post('/', async (req, res) => {
   try {
+    const psClient = settingsStore.getPrestaShopClient();
     const { orderIds, defaults, shipper: shipperOverride } = req.body;
 
     if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
@@ -30,14 +29,16 @@ router.post('/', async (req, res) => {
     const defaultService = (defaults && defaults.service) || excelDefaults.serviceType || config.package.service;
     const defaultPackageType = (defaults && defaults.packageType) || excelDefaults.packageType || config.package.packageType;
 
+    const savedShipper = settingsStore.getSettings().shipper || {};
+
     const shipper = {
-      name: (shipperOverride && shipperOverride.name) || excelDefaults.senderContactName || config.shipper.name,
-      company: (shipperOverride && shipperOverride.company) || excelDefaults.senderCompany || config.shipper.company,
-      address1: (shipperOverride && shipperOverride.address1) || excelDefaults.senderLine1 || config.shipper.address1,
-      city: (shipperOverride && shipperOverride.city) || excelDefaults.senderCity || config.shipper.city,
-      zip: (shipperOverride && shipperOverride.zip) || excelDefaults.senderPostcode || config.shipper.zip,
-      country: (shipperOverride && shipperOverride.country) || excelDefaults.senderCountry || config.shipper.country,
-      phone: (shipperOverride && shipperOverride.phone) || excelDefaults.senderContactNumber || config.shipper.phone,
+      name: (shipperOverride && shipperOverride.name) || savedShipper.name || excelDefaults.senderContactName || config.shipper.name,
+      company: (shipperOverride && shipperOverride.company) || savedShipper.company || excelDefaults.senderCompany || config.shipper.company,
+      address1: (shipperOverride && shipperOverride.address1) || savedShipper.address1 || excelDefaults.senderLine1 || config.shipper.address1,
+      city: (shipperOverride && shipperOverride.city) || savedShipper.city || excelDefaults.senderCity || config.shipper.city,
+      zip: (shipperOverride && shipperOverride.zip) || savedShipper.zip || excelDefaults.senderPostcode || config.shipper.zip,
+      country: (shipperOverride && shipperOverride.country) || savedShipper.country || excelDefaults.senderCountry || config.shipper.country,
+      phone: (shipperOverride && shipperOverride.phone) || savedShipper.phone || excelDefaults.senderContactNumber || config.shipper.phone,
     };
 
     const rows = [];

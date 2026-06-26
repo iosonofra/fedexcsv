@@ -1,5 +1,6 @@
 node_modules/
 .env
+data/settings.json
 *.xlsx
 !templates/fedex_example.xlsx
 npm-debug.log*
