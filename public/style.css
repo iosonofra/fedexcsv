@@ -1106,10 +1106,12 @@ input[type="checkbox"] {
 #notification-area {
   position: fixed;
   bottom: 24px;
-  right: 24px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 9999;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 12px;
   pointer-events: none;
 }
@@ -1322,6 +1324,13 @@ input[type="checkbox"] {
   border-radius: 30px;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+/* Settings Grid Card Equal Heights and Alignments */
+.settings-grid .dashboard-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 

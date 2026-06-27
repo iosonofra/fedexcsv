@@ -49,14 +49,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     await loadOrderStates();
-    await loadInitialDefaults();
+    await loadTemplates();
     handleSearch();
   }
 
   initializeApp();
 
   // Listener degli Eventi
-  saveShipperBtn.addEventListener('click', saveShipperSettings);
   filterForm.addEventListener('submit', handleSearch);
   clearFiltersBtn.addEventListener('click', clearFilters);
   masterCheckbox.addEventListener('change', handleMasterCheckboxChange);
@@ -108,61 +107,461 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Carica impostazioni iniziali dal server ed applica localStorage se presente
-  async function loadInitialDefaults() {
+  // Template states
+  let shipmentTemplates = [];
+  let shipperTemplates = [];
+  let activeShipmentTemplateId = '';
+  let activeShipperTemplateId = '';
+
+  const shipmentTemplateSelect = document.getElementById('shipment-template-select');
+  const shipperTemplateSelect = document.getElementById('shipper-template-select');
+
+  // Load templates from API
+  async function loadTemplates() {
     try {
-      const response = await fetch('/api/settings/defaults');
+      const response = await fetch('/api/settings/templates');
       if (response.ok) {
         const data = await response.json();
         
-        // Imposta i valori predefiniti per la spedizione dal file Excel caricato
-        if (data) {
-          const defaultWeight = document.getElementById('default-weight');
-          const defaultLength = document.getElementById('default-length');
-          const defaultWidth = document.getElementById('default-width');
-          const defaultHeight = document.getElementById('default-height');
-          const defaultService = document.getElementById('default-service');
-          const defaultPackage = document.getElementById('default-package');
+        // Shipment Templates
+        shipmentTemplates = data.shipment.templates;
+        activeShipmentTemplateId = data.shipment.activeId;
+        
+        // Shipper Templates
+        shipperTemplates = data.shipper.templates;
+        activeShipperTemplateId = data.shipper.activeId;
 
-          if (defaultWeight && data.packageWeight) defaultWeight.value = data.packageWeight;
-          if (defaultLength && data.length) defaultLength.value = data.length;
-          if (defaultWidth && data.width) defaultWidth.value = data.width;
-          if (defaultHeight && data.height) defaultHeight.value = data.height;
-          if (defaultService && data.serviceType) defaultService.value = data.serviceType;
-          if (defaultPackage && data.packageType) defaultPackage.value = data.packageType;
-
-          // Imposta i valori predefiniti del mittente come fallback iniziale
-          if (shipperInputs.name && data.senderContactName) shipperInputs.name.value = data.senderContactName;
-          if (shipperInputs.company && data.senderCompany) shipperInputs.company.value = data.senderCompany;
-          if (shipperInputs.address1 && data.senderLine1) shipperInputs.address1.value = data.senderLine1;
-          if (shipperInputs.city && data.senderCity) shipperInputs.city.value = data.senderCity;
-          if (shipperInputs.zip && data.senderPostcode) shipperInputs.zip.value = data.senderPostcode;
-          if (shipperInputs.country && data.senderCountry) shipperInputs.country.value = data.senderCountry;
-          if (shipperInputs.phone && data.senderContactNumber) shipperInputs.phone.value = data.senderContactNumber;
-        }
+        // Populate selects
+        populateTemplateSelect(shipmentTemplateSelect, shipmentTemplates, activeShipmentTemplateId);
+        populateTemplateSelect(shipperTemplateSelect, shipperTemplates, activeShipperTemplateId);
+        
+        // Apply active values to inputs
+        applyActiveShipmentTemplate();
+        applyActiveShipperTemplate();
+        lucide.createIcons();
       }
     } catch (e) {
-      console.error('Impossibile caricare i valori predefiniti dal server:', e);
+      console.error('Errore nel caricamento dei template:', e);
     }
+  }
 
-    // Carica la configurazione del mittente salvata persistente lato server
+  function populateTemplateSelect(selectEl, templates, activeId) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
+    templates.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      if (t.id === activeId) opt.selected = true;
+      selectEl.appendChild(opt);
+    });
+  }
+
+  function applyActiveShipmentTemplate() {
+    const active = shipmentTemplates.find(t => t.id === activeShipmentTemplateId);
+    if (!active) return;
+    
+    const fields = {
+      'default-weight': active.weight,
+      'default-length': active.length,
+      'default-width': active.width,
+      'default-height': active.height,
+      'default-service': active.service,
+      'default-package': active.packageType
+    };
+    
+    Object.keys(fields).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = fields[id];
+    });
+  }
+
+  function applyActiveShipperTemplate() {
+    const active = shipperTemplates.find(t => t.id === activeShipperTemplateId);
+    if (!active) return;
+    
+    if (shipperInputs.name) shipperInputs.name.value = active.nameVal || '';
+    if (shipperInputs.company) shipperInputs.company.value = active.company || '';
+    if (shipperInputs.address1) shipperInputs.address1.value = active.address1 || '';
+    if (shipperInputs.city) shipperInputs.city.value = active.city || '';
+    if (shipperInputs.zip) shipperInputs.zip.value = active.zip || '';
+    if (shipperInputs.country) {
+      const code = (active.country || 'IT').toUpperCase().trim();
+      let optionExists = false;
+      for (let i = 0; i < shipperInputs.country.options.length; i++) {
+        if (shipperInputs.country.options[i].value === code) {
+          optionExists = true;
+          break;
+        }
+      }
+      if (!optionExists && code) {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = `${code} - Altro`;
+        shipperInputs.country.appendChild(opt);
+      }
+      shipperInputs.country.value = code;
+    }
+    if (shipperInputs.phone) shipperInputs.phone.value = active.phone || '';
+  }
+
+  // Active change listeners
+  if (shipmentTemplateSelect) {
+    shipmentTemplateSelect.addEventListener('change', async (e) => {
+      const newId = e.target.value;
+      try {
+        const res = await fetch('/api/settings/templates/active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'shipment', id: newId })
+        });
+        if (res.ok) {
+          activeShipmentTemplateId = newId;
+          applyActiveShipmentTemplate();
+          showToast('Successo', 'Template spedizione attivo modificato.', 'success');
+        }
+      } catch (err) {
+        showToast('Errore', 'Impossibile cambiare template.', 'error');
+      }
+    });
+  }
+
+  if (shipperTemplateSelect) {
+    shipperTemplateSelect.addEventListener('change', async (e) => {
+      const newId = e.target.value;
+      try {
+        const res = await fetch('/api/settings/templates/active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'shipper', id: newId })
+        });
+        if (res.ok) {
+          activeShipperTemplateId = newId;
+          applyActiveShipperTemplate();
+          showToast('Successo', 'Template mittente attivo modificato.', 'success');
+        }
+      } catch (err) {
+        showToast('Errore', 'Impossibile cambiare template.', 'error');
+      }
+    });
+  }
+
+  // Save current fields back to active template
+  async function saveActiveShipmentTemplate() {
+    const active = shipmentTemplates.find(t => t.id === activeShipmentTemplateId);
+    if (!active) return;
+    
+    const weight = parseFloat(document.getElementById('default-weight').value) || 70.0;
+    const length = parseFloat(document.getElementById('default-length').value) || 80.0;
+    const width = parseFloat(document.getElementById('default-width').value) || 60.0;
+    const height = parseFloat(document.getElementById('default-height').value) || 100.0;
+    const service = document.getElementById('default-service').value;
+    const packageType = document.getElementById('default-package').value;
+
+    const payload = {
+      type: 'shipment',
+      template: {
+        id: active.id,
+        name: active.name,
+        weight, length, width, height, service, packageType
+      }
+    };
+
     try {
-      const response = await fetch('/api/settings/shipper');
-      if (response.ok) {
-        const shipperData = await response.json();
-        if (shipperData && Object.keys(shipperData).length > 0) {
-          if (shipperData.name) shipperInputs.name.value = shipperData.name;
-          if (shipperData.company !== undefined) shipperInputs.company.value = shipperData.company;
-          if (shipperData.address1) shipperInputs.address1.value = shipperData.address1;
-          if (shipperData.city) shipperInputs.city.value = shipperData.city;
-          if (shipperData.zip) shipperInputs.zip.value = shipperData.zip;
-          if (shipperData.country) shipperInputs.country.value = shipperData.country;
-          if (shipperData.phone) shipperInputs.phone.value = shipperData.phone;
-        }
+      const res = await fetch('/api/settings/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showToast('Successo', `Template spedizione "${active.name}" salvato con successo!`, 'success');
+        await loadTemplates();
+      } else {
+        showToast('Errore', 'Errore nel salvataggio del template.', 'error');
       }
-    } catch (e) {
-      console.error('Errore nel caricamento dei dati mittente dal server:', e);
+    } catch (err) {
+      showToast('Errore', 'Impossibile connettersi al server.', 'error');
     }
+  }
+
+  async function saveActiveShipperTemplate() {
+    const active = shipperTemplates.find(t => t.id === activeShipperTemplateId);
+    if (!active) return;
+
+    const nameVal = shipperInputs.name.value.trim();
+    const company = shipperInputs.company.value.trim();
+    const address1 = shipperInputs.address1.value.trim();
+    const city = shipperInputs.city.value.trim();
+    const zip = shipperInputs.zip.value.trim();
+    const country = shipperInputs.country.value.trim();
+    const phone = shipperInputs.phone.value.trim();
+
+    if (!nameVal || !address1 || !city || !zip || !country || !phone) {
+      showToast('Errore', 'Compila tutti i campi obbligatori del mittente.', 'error');
+      return;
+    }
+
+    const payload = {
+      type: 'shipper',
+      template: {
+        id: active.id,
+        name: active.name,
+        nameVal, company, address1, city, zip, country, phone
+      }
+    };
+
+    try {
+      const res = await fetch('/api/settings/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showToast('Successo', `Template mittente "${active.name}" salvato con successo!`, 'success');
+        await loadTemplates();
+      } else {
+        showToast('Errore', 'Errore nel salvataggio del template.', 'error');
+      }
+    } catch (err) {
+      showToast('Errore', 'Impossibile connettersi al server.', 'error');
+    }
+  }
+
+  // Save buttons click bindings
+  const saveShipmentBtn = document.getElementById('save-shipment-btn');
+  if (saveShipmentBtn) {
+    saveShipmentBtn.addEventListener('click', saveActiveShipmentTemplate);
+  }
+  if (saveShipperBtn) {
+    saveShipperBtn.addEventListener('click', saveActiveShipperTemplate);
+  }
+
+  // Rename active templates
+  async function renameActiveShipmentTemplate() {
+    const active = shipmentTemplates.find(t => t.id === activeShipmentTemplateId);
+    if (!active) return;
+
+    const newName = prompt('Inserisci il nuovo nome per il template di spedizione:', active.name);
+    if (!newName || !newName.trim()) return;
+
+    const payload = {
+      type: 'shipment',
+      template: {
+        ...active,
+        name: newName.trim()
+      }
+    };
+
+    try {
+      const res = await fetch('/api/settings/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showToast('Successo', `Template rinominato in "${newName}"`, 'success');
+        await loadTemplates();
+      } else {
+        showToast('Errore', 'Errore nel rinominare il template.', 'error');
+      }
+    } catch (err) {
+      showToast('Errore', 'Impossibile connettersi al server.', 'error');
+    }
+  }
+
+  async function renameActiveShipperTemplate() {
+    const active = shipperTemplates.find(t => t.id === activeShipperTemplateId);
+    if (!active) return;
+
+    const newName = prompt('Inserisci il nuovo nome per il template mittente:', active.name);
+    if (!newName || !newName.trim()) return;
+
+    const payload = {
+      type: 'shipper',
+      template: {
+        ...active,
+        name: newName.trim()
+      }
+    };
+
+    try {
+      const res = await fetch('/api/settings/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        showToast('Successo', `Template rinominato in "${newName}"`, 'success');
+        await loadTemplates();
+      } else {
+        showToast('Errore', 'Errore nel rinominare il template.', 'error');
+      }
+    } catch (err) {
+      showToast('Errore', 'Impossibile connettersi al server.', 'error');
+    }
+  }
+
+  // Rename buttons click bindings
+  const btnRenameShipmentTemplate = document.getElementById('btn-rename-shipment-template');
+  if (btnRenameShipmentTemplate) {
+    btnRenameShipmentTemplate.addEventListener('click', renameActiveShipmentTemplate);
+  }
+  const btnRenameShipperTemplate = document.getElementById('btn-rename-shipper-template');
+  if (btnRenameShipperTemplate) {
+    btnRenameShipperTemplate.addEventListener('click', renameActiveShipperTemplate);
+  }
+
+  // Create new template clones
+  async function createShipmentTemplate() {
+    const name = prompt('Inserisci il nome del nuovo template di spedizione:');
+    if (!name || !name.trim()) return;
+
+    const id = 't_' + Date.now();
+    const weight = parseFloat(document.getElementById('default-weight').value) || 70.0;
+    const length = parseFloat(document.getElementById('default-length').value) || 80.0;
+    const width = parseFloat(document.getElementById('default-width').value) || 60.0;
+    const height = parseFloat(document.getElementById('default-height').value) || 100.0;
+    const service = document.getElementById('default-service').value;
+    const packageType = document.getElementById('default-package').value;
+
+    const payload = {
+      type: 'shipment',
+      template: {
+        id,
+        name: name.trim(),
+        weight, length, width, height, service, packageType
+      }
+    };
+
+    try {
+      const res = await fetch('/api/settings/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        await fetch('/api/settings/templates/active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'shipment', id })
+        });
+        showToast('Successo', `Template spedizione "${name}" creato.`, 'success');
+        await loadTemplates();
+      }
+    } catch (err) {
+      showToast('Errore', 'Impossibile creare il template.', 'error');
+    }
+  }
+
+  async function createShipperTemplate() {
+    const name = prompt('Inserisci il nome del nuovo template mittente:');
+    if (!name || !name.trim()) return;
+
+    const id = 's_' + Date.now();
+    const nameVal = shipperInputs.name.value.trim();
+    const company = shipperInputs.company.value.trim();
+    const address1 = shipperInputs.address1.value.trim();
+    const city = shipperInputs.city.value.trim();
+    const zip = shipperInputs.zip.value.trim();
+    const country = shipperInputs.country.value.trim();
+    const phone = shipperInputs.phone.value.trim();
+
+    const payload = {
+      type: 'shipper',
+      template: {
+        id,
+        name: name.trim(),
+        nameVal, company, address1, city, zip, country, phone
+      }
+    };
+
+    try {
+      const res = await fetch('/api/settings/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        await fetch('/api/settings/templates/active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'shipper', id })
+        });
+        showToast('Successo', `Template mittente "${name}" creato.`, 'success');
+        await loadTemplates();
+      }
+    } catch (err) {
+      showToast('Errore', 'Impossibile creare il template.', 'error');
+    }
+  }
+
+  const btnAddShipmentTemplate = document.getElementById('btn-add-shipment-template');
+  if (btnAddShipmentTemplate) {
+    btnAddShipmentTemplate.addEventListener('click', createShipmentTemplate);
+  }
+  const btnAddShipperTemplate = document.getElementById('btn-add-shipper-template');
+  if (btnAddShipperTemplate) {
+    btnAddShipperTemplate.addEventListener('click', createShipperTemplate);
+  }
+
+  // Delete active templates
+  async function deleteActiveShipmentTemplate() {
+    const active = shipmentTemplates.find(t => t.id === activeShipmentTemplateId);
+    if (!active) return;
+    if (shipmentTemplates.length <= 1) {
+      showToast('Errore', 'Impossibile eliminare l\'ultimo template rimasto.', 'error');
+      return;
+    }
+    if (!confirm(`Sei sicuro di voler eliminare il template "${active.name}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/settings/templates?type=shipment&id=${active.id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast('Successo', `Template "${active.name}" eliminato.`, 'success');
+        await loadTemplates();
+      } else {
+        const data = await res.json();
+        showToast('Errore', data.error || 'Impossibile eliminare il template.', 'error');
+      }
+    } catch (err) {
+      showToast('Errore', 'Errore di connessione.', 'error');
+    }
+  }
+
+  async function deleteActiveShipperTemplate() {
+    const active = shipperTemplates.find(t => t.id === activeShipperTemplateId);
+    if (!active) return;
+    if (shipperTemplates.length <= 1) {
+      showToast('Errore', 'Impossibile eliminare l\'ultimo template rimasto.', 'error');
+      return;
+    }
+    if (!confirm(`Sei sicuro di voler eliminare il template mittente "${active.name}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/settings/templates?type=shipper&id=${active.id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast('Successo', `Template "${active.name}" eliminato.`, 'success');
+        await loadTemplates();
+      } else {
+        const data = await res.json();
+        showToast('Errore', data.error || 'Impossibile eliminare il template.', 'error');
+      }
+    } catch (err) {
+      showToast('Errore', 'Errore di connessione.', 'error');
+    }
+  }
+
+  const btnDeleteShipmentTemplate = document.getElementById('btn-delete-shipment-template');
+  if (btnDeleteShipmentTemplate) {
+    btnDeleteShipmentTemplate.addEventListener('click', deleteActiveShipmentTemplate);
+  }
+  const btnDeleteShipperTemplate = document.getElementById('btn-delete-shipper-template');
+  if (btnDeleteShipperTemplate) {
+    btnDeleteShipperTemplate.addEventListener('click', deleteActiveShipperTemplate);
   }
 
   // Salva impostazioni sul server
@@ -426,6 +825,17 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedOrders.delete(id);
       }
     });
+    updateActionFooter();
+  }
+
+  function deselectAllOrders() {
+    selectedOrders.clear();
+    const checkboxes = ordersTableBody.querySelectorAll('.order-checkbox');
+    checkboxes.forEach(cb => cb.checked = false);
+    if (masterCheckbox) {
+      masterCheckbox.checked = false;
+      masterCheckbox.indeterminate = false;
+    }
     updateActionFooter();
   }
 

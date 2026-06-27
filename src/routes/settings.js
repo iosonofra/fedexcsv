@@ -8,6 +8,15 @@ const PrestaShopClient = require('../services/prestashop');
 router.get('/defaults', async (req, res) => {
   try {
     const defaults = await getFedExDefaults();
+    const settings = settingsStore.getSettings();
+    if (settings.defaults) {
+      defaults.packageWeight = settings.defaults.packageWeight;
+      defaults.length = settings.defaults.length;
+      defaults.width = settings.defaults.width;
+      defaults.height = settings.defaults.height;
+      defaults.serviceType = settings.defaults.serviceType;
+      defaults.packageType = settings.defaults.packageType;
+    }
     res.json(defaults);
   } catch (error) {
     console.error('Error fetching FedEx defaults:', error);
@@ -167,6 +176,71 @@ router.post('/shipper', (req, res) => {
   } catch (error) {
     console.error('Error saving Shipper settings:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/settings/templates — Retrieve all templates and active IDs
+router.get('/templates', (req, res) => {
+  try {
+    const settings = settingsStore.getSettings();
+    res.json({
+      shipment: {
+        templates: settings.shipmentTemplates || [],
+        activeId: settings.activeShipmentTemplateId || ''
+      },
+      shipper: {
+        templates: settings.shipperTemplates || [],
+        activeId: settings.activeShipperTemplateId || ''
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching templates:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/settings/templates/active — Change active template
+router.post('/templates/active', (req, res) => {
+  try {
+    const { type, id } = req.body;
+    if (!type || !id) {
+      return res.status(400).json({ error: 'Campi type e id obbligatori.' });
+    }
+    settingsStore.setActiveTemplate(type, id);
+    res.json({ success: true, message: 'Template attivo modificato.' });
+  } catch (error) {
+    console.error('Error setting active template:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/settings/templates — Save or update template
+router.post('/templates', (req, res) => {
+  try {
+    const { type, template } = req.body;
+    if (!type || !template || !template.id || !template.name) {
+      return res.status(400).json({ error: 'Dati del template incompleti.' });
+    }
+    settingsStore.saveTemplate(type, template);
+    res.json({ success: true, message: 'Template salvato correttamente.' });
+  } catch (error) {
+    console.error('Error saving template:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/settings/templates — Delete a template
+router.delete('/templates', (req, res) => {
+  try {
+    const { type, id } = req.query;
+    if (!type || !id) {
+      return res.status(400).json({ error: 'Campi type e id obbligatori.' });
+    }
+    settingsStore.deleteTemplate(type, id);
+    res.json({ success: true, message: 'Template eliminato correttamente.' });
+  } catch (error) {
+    console.error('Error deleting template:', error);
+    res.status(400).json({ error: error.message });
   }
 });
 
