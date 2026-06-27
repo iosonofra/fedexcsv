@@ -666,7 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
     deactivateAllTabs();
     menuImportTracking.classList.add('active');
     sectionImportTracking.classList.remove('hidden');
-    mainHeaderTitle.textContent = 'Importazione Tracking FedEx';
+    mainHeaderTitle.textContent = 'Importa Tracking su PrestaShop';
     mainHeaderSubtitle.textContent = 'Carica il file con i tracking di ritorno generati da FedEx per associarli in PrestaShop';
   });
 

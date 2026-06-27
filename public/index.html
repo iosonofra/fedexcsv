@@ -35,7 +35,7 @@
         </button>
         <button class="menu-item" id="menu-import-tracking">
           <i data-lucide="upload"></i>
-          <span>Importa Tracking FedEx</span>
+          <span>Importa Tracking su PrestaShop</span>
         </button>
         <button class="menu-item" id="menu-shipment-settings">
           <i data-lucide="sliders"></i>
@@ -223,8 +223,14 @@
         <section class="dashboard-card hidden" id="import-step-2">
           <div class="list-header" style="margin-bottom: 20px;">
             <div class="list-summary">
-              <h3>2. Verifica Mappatura Colonne</h3>
-              <p>Controlla se le colonne del file sono state associate correttamente ai campi richiesti. Rilevate <strong id="import-detected-rows">0</strong> righe di dati valide.</p>
+              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <h3 style="margin: 0;">2. Verifica Mappatura Colonne</h3>
+                <span class="badge badge-purple" id="detected-rows-badge" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+                  <i data-lucide="file-spreadsheet" style="width: 14px; height: 14px;"></i>
+                  <span>Rilevate <strong id="import-detected-rows">0</strong> righe di dati</span>
+                </span>
+              </div>
+              <p style="margin-top: 8px; color: var(--text-secondary);">Controlla se le colonne del file sono state associate correttamente ai campi richiesti.</p>
             </div>
           </div>
 
