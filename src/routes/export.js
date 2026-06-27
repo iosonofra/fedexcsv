@@ -36,7 +36,7 @@ router.post('/', async (req, res) => {
     const shipper = {
       name: (shipperOverride && shipperOverride.name) || savedShipper.name || excelDefaults.senderContactName || config.shipper.name,
       company: (shipperOverride && shipperOverride.company) || savedShipper.company || excelDefaults.senderCompany || config.shipper.company,
-      address1: (shipperOverride && shipperOverride.address1) || savedShipper.address1 || excelDefaults.senderLine1 || config.shipper.address1,
+      address1: settingsStore.cleanAddressSpacing((shipperOverride && shipperOverride.address1) || savedShipper.address1 || excelDefaults.senderLine1 || config.shipper.address1),
       city: (shipperOverride && shipperOverride.city) || savedShipper.city || excelDefaults.senderCity || config.shipper.city,
       zip: (shipperOverride && shipperOverride.zip) || savedShipper.zip || excelDefaults.senderPostcode || config.shipper.zip,
       country: (shipperOverride && shipperOverride.country) || savedShipper.country || excelDefaults.senderCountry || config.shipper.country,
@@ -176,7 +176,7 @@ router.post('/', async (req, res) => {
           recipientCompany: address.company || null,
           recipientContactNumber: address.phone_mobile || address.phone || '',
           recipientEmail: customer ? customer.email : null,
-          recipientLine1: address.address1 || '',
+          recipientLine1: settingsStore.cleanAddressSpacing(address.address1 || ''),
           recipientLine2: address.address2 || null,
           recipientLine3: null,
           recipientPostcode: address.postcode || '',

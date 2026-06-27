@@ -97,6 +97,20 @@ function saveSettings(prestashopData) {
 }
 
 /**
+ * Normalizes address spacing (e.g. replaces multiple spaces with a single space,
+ * ensures space between letters and numbers: INDUSTRIE14 -> INDUSTRIE 14).
+ */
+function cleanAddressSpacing(addr) {
+  if (!addr) return '';
+  return addr
+    .toString()
+    .replace(/\s+/g, ' ')
+    .replace(/([a-zA-Z]+)(\d+)/g, '$1 $2')
+    .replace(/(\d+)([a-zA-Z]+)/g, '$1 $2')
+    .trim();
+}
+
+/**
  * Save Shipper settings to data/settings.json.
  */
 function saveShipperSettings(shipperData) {
@@ -107,7 +121,7 @@ function saveShipperSettings(shipperData) {
     shipper: {
       name: shipperData.name !== undefined ? shipperData.name.trim() : current.shipper.name,
       company: shipperData.company !== undefined ? shipperData.company.trim() : current.shipper.company,
-      address1: shipperData.address1 !== undefined ? shipperData.address1.trim() : current.shipper.address1,
+      address1: shipperData.address1 !== undefined ? cleanAddressSpacing(shipperData.address1) : current.shipper.address1,
       city: shipperData.city !== undefined ? shipperData.city.trim() : current.shipper.city,
       state: shipperData.state !== undefined ? shipperData.state.trim() : current.shipper.state,
       zip: shipperData.zip !== undefined ? shipperData.zip.trim() : current.shipper.zip,
@@ -180,5 +194,6 @@ module.exports = {
   isConfigured,
   getPrestaShopClient,
   invalidateOrderStatesCache,
-  maskApiKey
+  maskApiKey,
+  cleanAddressSpacing
 };
