@@ -20,6 +20,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const statesGrid = document.getElementById('states-grid');
   const saveStatesBtn = document.getElementById('save-states-btn');
 
+  // FedEx DOM Elements
+  const fedexSettingsForm = document.getElementById('fedex-settings-form');
+  const fedexClientIdInput = document.getElementById('fedex-client-id');
+  const fedexClientSecretInput = document.getElementById('fedex-client-secret');
+  const fedexAccountNumberInput = document.getElementById('fedex-account-number');
+  const fedexUseSandboxInput = document.getElementById('fedex-use-sandbox');
+  const fedexTestBtn = document.getElementById('fedex-test-btn');
+  const fedexSaveBtn = document.getElementById('fedex-save-btn');
+  const fedexConnectionResult = document.getElementById('fedex-connection-result');
+  const fedexConnectionResultText = document.getElementById('fedex-connection-result-text');
+  
+  const fedexConfigStatus = document.getElementById('fedex-config-status');
+  const fedexConfigEnv = document.getElementById('fedex-config-env');
+  const fedexConfigAccount = document.getElementById('fedex-config-account');
+
   // Load current settings on page load
   loadCurrentSettings();
 
@@ -30,6 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (saveStatesBtn) {
     saveStatesBtn.addEventListener('click', saveEnabledStates);
   }
+  if (fedexTestBtn) fedexTestBtn.addEventListener('click', testFedexConnection);
+  if (fedexSettingsForm) fedexSettingsForm.addEventListener('submit', saveFedexSettings);
 
   // Load and display current PrestaShop configuration
   async function loadCurrentSettings() {
@@ -75,6 +92,31 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (e) {
       console.error('Errore nel caricamento dei dati mittente:', e);
+    }
+
+    // Load and display current FedEx configuration
+    try {
+      const response = await fetch('/api/settings/fedex');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.configured) {
+          fedexConfigStatus.innerHTML = '<span class="config-status-dot green"></span> Configurato';
+          fedexConfigEnv.textContent = data.useSandbox ? 'Sandbox (Test)' : 'Production (Live)';
+          fedexConfigAccount.textContent = data.accountNumber || '—';
+          
+          // Pre-fill fields (with dummy secrets values if configured)
+          fedexClientIdInput.value = '••••••••••••••••';
+          fedexClientSecretInput.value = '••••••••••••••••';
+          if (data.accountNumber) fedexAccountNumberInput.value = data.accountNumber;
+          fedexUseSandboxInput.checked = !!data.useSandbox;
+        } else {
+          fedexConfigStatus.innerHTML = '<span class="config-status-dot red"></span> Non configurato';
+          fedexConfigEnv.textContent = '—';
+          fedexConfigAccount.textContent = '—';
+        }
+      }
+    } catch (e) {
+      console.error('Errore nel caricamento delle impostazioni FedEx:', e);
     }
   }
 
@@ -377,5 +419,109 @@ document.addEventListener('DOMContentLoaded', () => {
         '"': '&quot;'
       }[tag] || tag)
     );
+  }
+
+  // Test FedEx connection without saving
+  async function testFedexConnection() {
+    const clientId = fedexClientIdInput.value.trim();
+    const clientSecret = fedexClientSecretInput.value.trim();
+    const useSandbox = fedexUseSandboxInput.checked;
+
+    if (!clientId || !clientSecret) {
+      showFedexConnectionResult('error', 'Inserisci sia il Client ID che il Client Secret per testare.');
+      return;
+    }
+
+    showFedexConnectionResult('loading', 'Test di connessione FedEx in corso...');
+    fedexTestBtn.disabled = true;
+    const originalContent = fedexTestBtn.innerHTML;
+    fedexTestBtn.innerHTML = '<span class="spinner" style="width:16px;height:16px;"></span> Verifica...';
+
+    try {
+      const response = await fetch('/api/settings/fedex/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, clientSecret, useSandbox })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showFedexConnectionResult('success', data.message || 'Connessione a FedEx riuscita!');
+      } else {
+        showFedexConnectionResult('error', data.error || 'Test di connessione FedEx fallito.');
+      }
+    } catch (e) {
+      showFedexConnectionResult('error', 'Errore di rete: impossibile raggiungere il server.');
+    } finally {
+      fedexTestBtn.disabled = false;
+      fedexTestBtn.innerHTML = originalContent;
+      lucide.createIcons();
+    }
+  }
+
+  // Save FedEx settings
+  async function saveFedexSettings(e) {
+    e.preventDefault();
+
+    const clientId = fedexClientIdInput.value.trim();
+    const clientSecret = fedexClientSecretInput.value.trim();
+    const accountNumber = fedexAccountNumberInput.value.trim();
+    const useSandbox = fedexUseSandboxInput.checked;
+
+    if (!clientId || !clientSecret || !accountNumber) {
+      showFedexConnectionResult('error', 'Tutti i campi sono obbligatori.');
+      return;
+    }
+
+    fedexSaveBtn.disabled = true;
+    const originalContent = fedexSaveBtn.innerHTML;
+    fedexSaveBtn.innerHTML = '<span class="spinner" style="width:16px;height:16px;"></span> Salvataggio...';
+
+    try {
+      const response = await fetch('/api/settings/fedex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, clientSecret, accountNumber, useSandbox })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showFedexConnectionResult('success', 'Impostazioni FedEx salvate con successo!');
+        showToast('Successo', 'Impostazioni FedEx salvate correttamente!', 'success');
+        // Reload displayed config (will pre-fill with dummy values)
+        await loadCurrentSettings();
+      } else {
+        showFedexConnectionResult('error', data.error || 'Errore nel salvataggio FedEx.');
+        showToast('Errore', data.error || 'Errore nel salvataggio FedEx.', 'error');
+      }
+    } catch (e) {
+      showFedexConnectionResult('error', 'Errore di rete: impossibile raggiungere il server.');
+      showToast('Errore', 'Errore di rete: impossibile raggiungere il server.', 'error');
+    } finally {
+      fedexSaveBtn.disabled = false;
+      fedexSaveBtn.innerHTML = originalContent;
+      lucide.createIcons();
+    }
+  }
+
+  // Show FedEx connection result message
+  function showFedexConnectionResult(type, message) {
+    fedexConnectionResult.className = `connection-result ${type}`;
+    fedexConnectionResultText.textContent = message;
+
+    let iconName = 'info';
+    if (type === 'success') iconName = 'check-circle';
+    else if (type === 'error') iconName = 'alert-circle';
+    else if (type === 'loading') iconName = 'loader';
+
+    const iconEl = fedexConnectionResult.querySelector('i, svg');
+    if (iconEl) {
+      const newIcon = document.createElement('i');
+      newIcon.setAttribute('data-lucide', iconName);
+      iconEl.replaceWith(newIcon);
+      lucide.createIcons();
+    }
   }
 });

@@ -1,5 +1,11 @@
 const axios = require('axios');
 
+// Escape special XML characters to prevent injection
+function escapeXML(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c]));
+}
+
 class PrestaShopClient {
   constructor(baseUrl, apiKey) {
     // Ensure clean base URL without trailing slash before adding /api
@@ -90,7 +96,7 @@ class PrestaShopClient {
   }
 
   async getOrdersByReference(reference) {
-    return this.getOrders({ 'filter[reference]': reference });
+    return this.getOrders({ 'filter[reference]': `[${reference}]` });
   }
 
   async getOrderCarrierForOrder(orderId) {
@@ -117,15 +123,15 @@ class PrestaShopClient {
       const xmlPayload = `
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <order_carrier>
-    <id>${orderCarrierId}</id>
-    <id_order>${orderCarrierData.id_order || ''}</id_order>
-    <id_carrier>${orderCarrierData.id_carrier || ''}</id_carrier>
-    <id_order_invoice>${orderCarrierData.id_order_invoice || ''}</id_order_invoice>
-    <weight>${orderCarrierData.weight || ''}</weight>
-    <shipping_cost_tax_excl>${orderCarrierData.shipping_cost_tax_excl || ''}</shipping_cost_tax_excl>
-    <shipping_cost_tax_incl>${orderCarrierData.shipping_cost_tax_incl || ''}</shipping_cost_tax_incl>
-    <tracking_number>${trackingNumber}</tracking_number>
-    <date_add>${orderCarrierData.date_add || ''}</date_add>
+    <id>${escapeXML(orderCarrierId)}</id>
+    <id_order>${escapeXML(orderCarrierData.id_order)}</id_order>
+    <id_carrier>${escapeXML(orderCarrierData.id_carrier)}</id_carrier>
+    <id_order_invoice>${escapeXML(orderCarrierData.id_order_invoice)}</id_order_invoice>
+    <weight>${escapeXML(orderCarrierData.weight)}</weight>
+    <shipping_cost_tax_excl>${escapeXML(orderCarrierData.shipping_cost_tax_excl)}</shipping_cost_tax_excl>
+    <shipping_cost_tax_incl>${escapeXML(orderCarrierData.shipping_cost_tax_incl)}</shipping_cost_tax_incl>
+    <tracking_number>${escapeXML(trackingNumber)}</tracking_number>
+    <date_add>${escapeXML(orderCarrierData.date_add)}</date_add>
   </order_carrier>
 </prestashop>
       `.trim();

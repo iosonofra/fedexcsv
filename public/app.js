@@ -29,6 +29,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Stato dell'Applicazione
   let loadedOrders = [];
   let selectedOrders = new Map();
+  let activePollingInterval = null; // Guard contro doppio import tracking
+
+  // Indicatore di connessione dinamico
+  function updateConnectionStatus(ok) {
+    const dot = document.querySelector('.status-dot');
+    const text = document.querySelector('.status-text');
+    if (dot && text) {
+      dot.className = `status-dot ${ok ? 'green' : 'red'}`;
+      text.textContent = ok ? 'Connesso' : 'Errore connessione';
+    }
+  }
 
   // Carica i dati predefiniti, gli stati ordine ed esegui la ricerca iniziale
   async function initializeApp() {
@@ -48,18 +59,34 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Errore nel controllo configurazione:', e);
     }
 
-    await loadOrderStates();
-    await loadTemplates();
-    handleSearch();
+    try {
+      await loadOrderStates();
+    } catch (e) {
+      console.error('Errore nel caricamento degli stati ordine:', e);
+    }
+    try {
+      await loadTemplates();
+    } catch (e) {
+      console.error('Errore nel caricamento dei template:', e);
+    }
+    try {
+      handleSearch();
+    } catch (e) {
+      console.error('Errore nella ricerca iniziale:', e);
+    }
   }
 
-  initializeApp();
+  try {
+    initializeApp();
+  } catch (e) {
+    console.error('Errore durante l\'inizializzazione dell\'applicazione:', e);
+  }
 
   // Listener degli Eventi
-  filterForm.addEventListener('submit', handleSearch);
-  clearFiltersBtn.addEventListener('click', clearFilters);
-  masterCheckbox.addEventListener('change', handleMasterCheckboxChange);
-  exportBtn.addEventListener('click', handleExport);
+  if (filterForm) filterForm.addEventListener('submit', handleSearch);
+  if (clearFiltersBtn) clearFiltersBtn.addEventListener('click', clearFilters);
+  if (masterCheckbox) masterCheckbox.addEventListener('change', handleMasterCheckboxChange);
+  if (exportBtn) exportBtn.addEventListener('click', handleExport);
 
   // Carica l'elenco degli stati da PrestaShop e popola il filtro dropdown
   async function loadOrderStates() {
@@ -668,9 +695,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       loadedOrders = await response.json();
+      updateConnectionStatus(true);
       renderOrdersTable();
     } catch (error) {
       console.error(error);
+      updateConnectionStatus(false);
       showToast('Errore API', `Impossibile caricare gli ordini: ${error.message}`, 'error');
       ordersTableBody.innerHTML = `
         <tr class="empty-row">
@@ -1078,7 +1107,37 @@ document.addEventListener('DOMContentLoaded', () => {
     sectionImportTracking.classList.remove('hidden');
     mainHeaderTitle.textContent = 'Importa Tracking su PrestaShop';
     mainHeaderSubtitle.textContent = 'Carica il file con i tracking di ritorno generati da FedEx per associarli in PrestaShop';
+    
+    // Default to Excel file upload tab when navigation menu is clicked
+    if (tabImportFile) tabImportFile.click();
   });
+
+  const tabImportFile = document.getElementById('tab-import-file');
+  const tabImportDirect = document.getElementById('tab-import-direct');
+  const panelImportFile = document.getElementById('panel-import-file');
+  const panelImportDirect = document.getElementById('panel-import-direct');
+
+  if (tabImportFile && tabImportDirect) {
+    tabImportFile.addEventListener('click', () => {
+      tabImportFile.classList.add('active');
+      tabImportDirect.classList.remove('active');
+      panelImportFile.classList.remove('hidden');
+      panelImportDirect.classList.add('hidden');
+      importStep3.classList.add('hidden');
+    });
+
+    tabImportDirect.addEventListener('click', () => {
+      tabImportDirect.classList.add('active');
+      tabImportFile.classList.remove('active');
+      panelImportDirect.classList.remove('hidden');
+      panelImportFile.classList.add('hidden');
+      importStep3.classList.add('hidden');
+      
+      // Clear previous direct sync states
+      if (directPendingContainer) directPendingContainer.classList.add('hidden');
+      if (directEmptyState) directEmptyState.classList.add('hidden');
+    });
+  }
 
   if (menuShipmentSettings) {
     menuShipmentSettings.addEventListener('click', () => {
@@ -1313,6 +1372,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      if (activePollingInterval) {
+        showToast('Attenzione', 'Un\'importazione è già in corso. Attendi il completamento.', 'warning');
+        return;
+      }
+
       btnStartImport.disabled = true;
       const originalContent = btnStartImport.innerHTML;
       btnStartImport.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Importazione avviata...';
@@ -1340,6 +1404,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const importId = initialJob.importId;
         const total = initialJob.total;
 
+        // Inizializza progress bar
+        const progressContainer = document.getElementById('import-progress-container');
+        const progressBar = document.getElementById('import-progress-bar');
+        const progressPercent = document.getElementById('import-progress-percent');
+        const progressStatus = document.getElementById('import-progress-status');
+        
+        if (progressContainer) progressContainer.classList.remove('hidden');
+        if (progressBar) progressBar.style.width = '0%';
+        if (progressPercent) progressPercent.textContent = '0%';
+        if (progressStatus) progressStatus.textContent = `Avvio importazione (${total} elementi)...`;
+
         // Start polling the status endpoint
         pollImportStatus(importId, total, originalContent);
         
@@ -1348,12 +1423,14 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Importazione Fallita', error.message, 'error');
         btnStartImport.disabled = false;
         btnStartImport.innerHTML = originalContent;
+        const progressContainer = document.getElementById('import-progress-container');
+        if (progressContainer) progressContainer.classList.add('hidden');
       }
     });
   }
 
-  function pollImportStatus(importId, total, originalContent) {
-    const interval = setInterval(async () => {
+  function pollImportStatus(importId, total, originalContent, triggerButton = btnStartImport, isDirectSync = false, isFetchOnlyDirect = false) {
+    activePollingInterval = setInterval(async () => {
       try {
         const response = await fetch(`/api/tracking/import-status?id=${importId}`);
         if (!response.ok) {
@@ -1363,33 +1440,400 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const job = await response.json();
 
+        // Target progress elements dynamically
+        const prefix = isDirectSync ? (isFetchOnlyDirect ? 'direct' : 'direct-import') : 'import';
+        const progressBar = document.getElementById(`${prefix}-progress-bar`);
+        const progressPercent = document.getElementById(`${prefix}-progress-percent`);
+        const progressStatus = document.getElementById(`${prefix}-progress-status`);
+        const progressContainer = document.getElementById(`${prefix}-progress-container`);
+
         if (job.status === 'processing') {
-          btnStartImport.innerHTML = `<span class="spinner" style="width:14px;height:14px;"></span> Importazione in corso (${job.processed}/${job.total})...`;
-        } else if (job.status === 'completed') {
-          clearInterval(interval);
-          btnStartImport.disabled = false;
-          btnStartImport.innerHTML = originalContent;
+          triggerButton.innerHTML = `<span class="spinner" style="width:14px;height:14px;"></span> ${isDirectSync ? (isFetchOnlyDirect ? 'Ricerca' : 'Importazione') : 'Importazione'} in corso (${job.processed}/${job.total})...`;
           
-          renderResultsStep({
-            summary: {
-              totalProcessed: job.total,
-              successCount: job.successCount,
-              warningCount: job.warningCount,
-              errorCount: job.errorCount
-            },
-            details: job.details
-          });
+          const percent = Math.min(100, Math.round((job.processed / job.total) * 100));
+          
+          if (progressBar) progressBar.style.width = `${percent}%`;
+          if (progressPercent) progressPercent.textContent = `${percent}%`;
+          if (progressStatus) progressStatus.textContent = `${isDirectSync ? (isFetchOnlyDirect ? 'Verifica' : 'Importazione') : 'Associazione'} in corso: ${job.processed} di ${job.total} elaborati`;
+        } else if (job.status === 'completed') {
+          if (progressBar) progressBar.style.width = '100%';
+          if (progressPercent) progressPercent.textContent = '100%';
+          setTimeout(() => {
+            if (progressContainer) progressContainer.classList.add('hidden');
+          }, 800);
+
+          clearInterval(activePollingInterval);
+          activePollingInterval = null;
+          triggerButton.disabled = false;
+          triggerButton.innerHTML = originalContent;
+          
+          if (isFetchOnlyDirect) {
+            // Render the intermediate results table (Step 2)
+            renderDirectResultsStep(job.details);
+          } else {
+            // If it's a real import, hide Step 2 as well when moving to Step 3
+            if (isDirectSync) {
+              const directStep2 = document.getElementById('direct-step-2');
+              if (directStep2) directStep2.classList.add('hidden');
+            }
+            // Render final results in step 3
+            renderResultsStep({
+              summary: {
+                totalProcessed: job.total,
+                successCount: job.successCount,
+                warningCount: job.warningCount,
+                errorCount: job.errorCount
+              },
+              details: job.details
+            });
+          }
         } else if (job.status === 'failed') {
-          clearInterval(interval);
-          btnStartImport.disabled = false;
-          btnStartImport.innerHTML = originalContent;
-          showToast('Importazione Fallita', job.error || 'Errore durante l\'importazione.', 'error');
+          if (progressContainer) progressContainer.classList.add('hidden');
+
+          clearInterval(activePollingInterval);
+          activePollingInterval = null;
+          triggerButton.disabled = false;
+          triggerButton.innerHTML = originalContent;
+          showToast(`${isDirectSync ? (isFetchOnlyDirect ? 'Ricerca' : 'Importazione') : 'Importazione'} Fallita`, job.error || 'Errore riscontrato.', 'error');
         }
       } catch (error) {
         console.error('Errore nel polling:', error);
-        // We do not stop the polling on temporary network errors.
       }
     }, 1000);
+  }
+
+  // Direct Sync DOM Elements
+  const btnFindPendingSync = document.getElementById('btn-find-pending-sync');
+  const btnStartDirectSync = document.getElementById('btn-start-direct-sync');
+  const directPendingContainer = document.getElementById('direct-pending-container');
+  const directPendingTableBody = document.getElementById('direct-pending-table-body');
+  const directPendingCountText = document.getElementById('direct-pending-count-text');
+  const directMasterCheckbox = document.getElementById('direct-master-checkbox');
+  const directEmptyState = document.getElementById('direct-empty-state');
+  const directProgressContainer = document.getElementById('direct-progress-container');
+
+  let pendingSyncOrders = [];
+
+  const directIncludeSynced = document.getElementById('direct-include-synced');
+
+  if (btnFindPendingSync) {
+    btnFindPendingSync.addEventListener('click', async () => {
+      btnFindPendingSync.disabled = true;
+      const originalContent = btnFindPendingSync.innerHTML;
+      btnFindPendingSync.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Ricerca...';
+      
+      const includeSynced = directIncludeSynced ? directIncludeSynced.checked : false;
+      
+      try {
+        const response = await fetch(`/api/tracking/pending-sync?includeSynced=${includeSynced}`);
+        if (!response.ok) {
+          throw new Error('Impossibile recuperare gli ordini in attesa di sincronizzazione.');
+        }
+        
+        pendingSyncOrders = await response.json();
+        
+        if (pendingSyncOrders.length === 0) {
+          directPendingContainer.classList.add('hidden');
+          directEmptyState.classList.remove('hidden');
+        } else {
+          directEmptyState.classList.add('hidden');
+          directPendingContainer.classList.remove('hidden');
+          
+          directPendingCountText.textContent = `Trovati ${pendingSyncOrders.length} ordini pronti per la sincronizzazione`;
+          
+          // Populate table
+          directPendingTableBody.innerHTML = '';
+          pendingSyncOrders.forEach(order => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td><input type="checkbox" value="${order.id}" checked></td>
+              <td>${order.id}</td>
+              <td><code class="font-mono">${escapeHTML(order.reference)}</code></td>
+              <td>${order.date_add}</td>
+              <td>${escapeHTML(order.customer_name)}</td>
+              <td>${escapeHTML(order.delivery_city)}</td>
+            `;
+            
+            // Checkbox change listener
+            const checkbox = tr.querySelector('input');
+            checkbox.addEventListener('change', () => {
+              updateDirectMasterCheckboxState();
+            });
+
+            directPendingTableBody.appendChild(tr);
+          });
+          
+          updateDirectMasterCheckboxState();
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Errore ricerca', err.message, 'error');
+      } finally {
+        btnFindPendingSync.disabled = false;
+        btnFindPendingSync.innerHTML = originalContent;
+        lucide.createIcons();
+      }
+    });
+  }
+
+  if (directMasterCheckbox) {
+    directMasterCheckbox.addEventListener('change', () => {
+      const checked = directMasterCheckbox.checked;
+      const checkboxes = directPendingTableBody.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach(cb => {
+        cb.checked = checked;
+      });
+    });
+  }
+
+  function updateDirectMasterCheckboxState() {
+    if (!directMasterCheckbox) return;
+    const checkboxes = directPendingTableBody.querySelectorAll('input[type="checkbox"]');
+    if (checkboxes.length === 0) {
+      directMasterCheckbox.checked = false;
+      return;
+    }
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    directMasterCheckbox.checked = allChecked;
+  }
+
+  if (btnStartDirectSync) {
+    btnStartDirectSync.addEventListener('click', async () => {
+      const checkboxes = directPendingTableBody.querySelectorAll('input[type="checkbox"]:checked');
+      const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
+      
+      if (selectedIds.length === 0) {
+        showToast('Nessun ordine selezionato', 'Seleziona almeno un ordine da verificare.', 'warning');
+        return;
+      }
+
+      const ordersToSync = pendingSyncOrders
+        .filter(o => selectedIds.includes(o.id))
+        .map(o => ({ id: o.id, reference: o.reference }));
+
+      if (activePollingInterval) {
+        showToast('Attenzione', 'Un processo è già in corso.', 'warning');
+        return;
+      }
+
+      btnStartDirectSync.disabled = true;
+      const originalContent = btnStartDirectSync.innerHTML;
+      btnStartDirectSync.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Inizializzazione...';
+
+      try {
+        const response = await fetch('/api/tracking/sync-direct', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orders: ordersToSync, fetchOnly: true })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Impossibile avviare la ricerca.');
+        }
+
+        const job = await response.json();
+        
+        // Show progress bar
+        if (directProgressContainer) directProgressContainer.classList.remove('hidden');
+        document.getElementById('direct-progress-bar').style.width = '0%';
+        document.getElementById('direct-progress-percent').textContent = '0%';
+        document.getElementById('direct-progress-status').textContent = `Verifica disponibilità tracking su FedEx per ${job.total} ordini...`;
+
+        // Start polling (Phase 1 lookup: isFetchOnlyDirect = true)
+        pollImportStatus(job.importId, job.total, originalContent, btnStartDirectSync, true, true);
+
+      } catch (err) {
+        console.error(err);
+        showToast('Errore ricerca', err.message, 'error');
+        btnStartDirectSync.disabled = false;
+        btnStartDirectSync.innerHTML = originalContent;
+        if (directProgressContainer) directProgressContainer.classList.add('hidden');
+      }
+    });
+  }
+
+  // Step 2 Direct Sync Result Logic
+  const directStep1 = document.getElementById('direct-step-1');
+  const directStep2 = document.getElementById('direct-step-2');
+  const directResultsTableBody = document.getElementById('direct-results-table-body');
+  const directResultsMasterCheckbox = document.getElementById('direct-results-master-checkbox');
+  const btnCancelDirectResults = document.getElementById('btn-cancel-direct-results');
+  const btnApplyDirectImport = document.getElementById('btn-apply-direct-import');
+  const directImportProgressContainer = document.getElementById('direct-import-progress-container');
+
+  function renderDirectResultsStep(details) {
+    directStep1.classList.add('hidden');
+    directStep2.classList.remove('hidden');
+
+    directResultsTableBody.innerHTML = '';
+
+    const successList = details.success || [];
+    const warningList = details.warnings || [];
+    const errorList = details.errors || [];
+
+    const allItems = [];
+
+    successList.forEach(item => {
+      const origOrder = pendingSyncOrders.find(o => o.id === item.orderId) || {};
+      allItems.push({
+        orderId: item.orderId,
+        reference: item.reference,
+        customerName: origOrder.customer_name || 'Cliente',
+        deliveryCity: origOrder.delivery_city || '—',
+        trackingNumber: item.trackingNumber,
+        status: 'found',
+        statusText: `<span class="log-tag success">Trovato</span>`,
+        message: item.message
+      });
+    });
+
+    warningList.forEach(item => {
+      const origOrder = pendingSyncOrders.find(o => o.reference === item.reference) || {};
+      allItems.push({
+        orderId: origOrder.id || '—',
+        reference: item.reference,
+        customerName: origOrder.customer_name || 'Cliente',
+        deliveryCity: origOrder.delivery_city || '—',
+        trackingNumber: '',
+        status: 'not_found',
+        statusText: `<span class="log-tag warning">Non spedito</span>`,
+        message: item.message
+      });
+    });
+
+    errorList.forEach(item => {
+      const origOrder = pendingSyncOrders.find(o => o.reference === item.reference) || {};
+      allItems.push({
+        orderId: origOrder.id || '—',
+        reference: item.reference,
+        customerName: origOrder.customer_name || 'Cliente',
+        deliveryCity: origOrder.delivery_city || '—',
+        trackingNumber: '',
+        status: 'error',
+        statusText: `<span class="log-tag error">Errore API</span>`,
+        message: item.message
+      });
+    });
+
+    allItems.sort((a, b) => b.orderId - a.orderId);
+
+    allItems.forEach(item => {
+      const tr = document.createElement('tr');
+      const hasTracking = item.status === 'found' && item.trackingNumber;
+      const checkboxHTML = hasTracking 
+        ? `<input type="checkbox" class="direct-result-row-cb" data-order-id="${item.orderId}" data-reference="${item.reference}" data-tracking="${item.trackingNumber}" checked>`
+        : `<input type="checkbox" disabled style="opacity: 0.4;">`;
+
+      tr.innerHTML = `
+        <td>${checkboxHTML}</td>
+        <td>${item.orderId}</td>
+        <td><code class="font-mono">${escapeHTML(item.reference)}</code></td>
+        <td>${escapeHTML(item.customerName)}</td>
+        <td>${escapeHTML(item.deliveryCity)}</td>
+        <td>${hasTracking ? `<code class="font-mono font-semibold" style="color:var(--color-accent);">${item.trackingNumber}</code>` : `<span style="color:var(--text-muted);">Nessuno</span>`}</td>
+        <td>${item.statusText}</td>
+      `;
+      directResultsTableBody.appendChild(tr);
+    });
+
+    updateDirectResultsMasterCheckboxState();
+    lucide.createIcons();
+  }
+
+  if (directResultsMasterCheckbox) {
+    directResultsMasterCheckbox.addEventListener('change', () => {
+      const checked = directResultsMasterCheckbox.checked;
+      const checkboxes = directResultsTableBody.querySelectorAll('.direct-result-row-cb:not([disabled])');
+      checkboxes.forEach(cb => {
+        cb.checked = checked;
+      });
+    });
+  }
+
+  function updateDirectResultsMasterCheckboxState() {
+    if (!directResultsMasterCheckbox) return;
+    const checkboxes = directResultsTableBody.querySelectorAll('.direct-result-row-cb:not([disabled])');
+    if (checkboxes.length === 0) {
+      directResultsMasterCheckbox.checked = false;
+      directResultsMasterCheckbox.disabled = true;
+      return;
+    }
+    directResultsMasterCheckbox.disabled = false;
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    directResultsMasterCheckbox.checked = allChecked;
+  }
+
+  if (directResultsTableBody) {
+    directResultsTableBody.addEventListener('change', (e) => {
+      if (e.target.classList.contains('direct-result-row-cb')) {
+        updateDirectResultsMasterCheckboxState();
+      }
+    });
+  }
+
+  if (btnCancelDirectResults) {
+    btnCancelDirectResults.addEventListener('click', () => {
+      directStep2.classList.add('hidden');
+      directStep1.classList.remove('hidden');
+      if (directImportProgressContainer) directImportProgressContainer.classList.add('hidden');
+    });
+  }
+
+  if (btnApplyDirectImport) {
+    btnApplyDirectImport.addEventListener('click', async () => {
+      const checkedCbs = directResultsTableBody.querySelectorAll('.direct-result-row-cb:checked');
+      const ordersToImport = Array.from(checkedCbs).map(cb => ({
+        id: parseInt(cb.getAttribute('data-order-id'), 10),
+        reference: cb.getAttribute('data-reference'),
+        trackingNumber: cb.getAttribute('data-tracking')
+      }));
+
+      if (ordersToImport.length === 0) {
+        showToast('Nessun ordine selezionato', 'Seleziona almeno un ordine con tracking trovato da importare.', 'warning');
+        return;
+      }
+
+      if (activePollingInterval) {
+        showToast('Attenzione', 'Un processo è già in corso.', 'warning');
+        return;
+      }
+
+      btnApplyDirectImport.disabled = true;
+      const originalContent = btnApplyDirectImport.innerHTML;
+      btnApplyDirectImport.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Inizializzazione...';
+
+      try {
+        const response = await fetch('/api/tracking/import-direct-to-prestashop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orders: ordersToImport })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Impossibile avviare l\'importazione.');
+        }
+
+        const job = await response.json();
+
+        // Show progress bar
+        if (directImportProgressContainer) directImportProgressContainer.classList.remove('hidden');
+        document.getElementById('direct-import-progress-bar').style.width = '0%';
+        document.getElementById('direct-import-progress-percent').textContent = '0%';
+        document.getElementById('direct-import-progress-status').textContent = `Associazione tracking in PrestaShop per ${job.total} ordini...`;
+
+        // Start polling (Phase 2 Import: isFetchOnlyDirect = false)
+        pollImportStatus(job.importId, job.total, originalContent, btnApplyDirectImport, true, false);
+
+      } catch (err) {
+        console.error(err);
+        showToast('Errore importazione', err.message, 'error');
+        btnApplyDirectImport.disabled = false;
+        btnApplyDirectImport.innerHTML = originalContent;
+        if (directImportProgressContainer) directImportProgressContainer.classList.add('hidden');
+      }
+    });
   }
 
   // Elementi Step 3

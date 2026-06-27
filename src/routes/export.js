@@ -46,6 +46,11 @@ router.post('/', async (req, res) => {
     const rows = [];
     const warnings = [];
 
+    const customerCache = {};
+    const addressCache = {};
+    const countryCache = {};
+    const stateCache = {};
+
     for (const orderId of orderIds) {
       try {
         await delay(100); // 100ms throttle delay
@@ -62,29 +67,57 @@ router.post('/', async (req, res) => {
           continue;
         }
 
-        // Fetch recipient address and customer details
-        const address = await psClient.getAddress(idAddress);
+        // Fetch recipient address and customer details with caching
+        let address = addressCache[idAddress];
+        if (!address) {
+          address = await psClient.getAddress(idAddress);
+          if (address) {
+            addressCache[idAddress] = address;
+          }
+        }
+
         if (!address) {
           warnings.push(`Impossibile caricare l'indirizzo ID ${idAddress} per l'ordine ${order.reference} (ID ${orderId}).`);
           continue;
         }
 
-        const customer = await psClient.getCustomer(order.id_customer);
+        let customer = null;
+        if (order.id_customer && order.id_customer !== '0') {
+          if (customerCache[order.id_customer]) {
+            customer = customerCache[order.id_customer];
+          } else {
+            customer = await psClient.getCustomer(order.id_customer);
+            if (customer) {
+              customerCache[order.id_customer] = customer;
+            }
+          }
+        }
+
         let countryCode = 'IT'; // Default fallback
         if (address.id_country && address.id_country !== '0') {
-          await delay(50);
-          const country = await psClient.getCountry(address.id_country);
-          if (country && country.iso_code) {
-            countryCode = country.iso_code;
+          if (countryCache[address.id_country]) {
+            countryCode = countryCache[address.id_country];
+          } else {
+            await delay(50);
+            const country = await psClient.getCountry(address.id_country);
+            if (country && country.iso_code) {
+              countryCode = country.iso_code;
+              countryCache[address.id_country] = countryCode;
+            }
           }
         }
 
         let stateCode = null;
         if (address.id_state && address.id_state !== '0') {
-          await delay(50);
-          const stateObj = await psClient.getState(address.id_state);
-          if (stateObj && stateObj.iso_code) {
-            stateCode = stateObj.iso_code;
+          if (stateCache[address.id_state]) {
+            stateCode = stateCache[address.id_state];
+          } else {
+            await delay(50);
+            const stateObj = await psClient.getState(address.id_state);
+            if (stateObj && stateObj.iso_code) {
+              stateCode = stateObj.iso_code;
+              stateCache[address.id_state] = stateCode;
+            }
           }
         }
 

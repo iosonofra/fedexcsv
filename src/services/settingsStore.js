@@ -23,6 +23,12 @@ function getSettings() {
       apiKey: config.prestashop.apiKey || '',
       enabledOrderStates: []
     },
+    fedex: {
+      clientId: '',
+      clientSecret: '',
+      accountNumber: '',
+      useSandbox: true
+    },
     shipmentTemplates: [],
     activeShipmentTemplateId: '',
     shipperTemplates: [],
@@ -49,6 +55,16 @@ function getSettings() {
     if (fileData.prestashop.baseUrl) settings.prestashop.baseUrl = fileData.prestashop.baseUrl;
     if (fileData.prestashop.apiKey) settings.prestashop.apiKey = fileData.prestashop.apiKey;
     if (fileData.prestashop.enabledOrderStates) settings.prestashop.enabledOrderStates = fileData.prestashop.enabledOrderStates;
+  }
+
+  // Load FedEx settings
+  if (fileData.fedex) {
+    settings.fedex = {
+      clientId: fileData.fedex.clientId || '',
+      clientSecret: fileData.fedex.clientSecret || '',
+      accountNumber: fileData.fedex.accountNumber || '',
+      useSandbox: fileData.fedex.useSandbox !== undefined ? fileData.fedex.useSandbox : true
+    };
   }
 
   // 3. Load or initialize shipmentTemplates
@@ -103,6 +119,7 @@ function getSettings() {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
         prestashop: settings.prestashop,
+        fedex: settings.fedex,
         shipmentTemplates: settings.shipmentTemplates,
         activeShipmentTemplateId: settings.activeShipmentTemplateId,
         shipperTemplates: settings.shipperTemplates,
@@ -155,6 +172,7 @@ function persistSettings(settings) {
   }
   const toSave = {
     prestashop: settings.prestashop,
+    fedex: settings.fedex,
     shipmentTemplates: settings.shipmentTemplates,
     activeShipmentTemplateId: settings.activeShipmentTemplateId,
     shipperTemplates: settings.shipperTemplates,
@@ -345,6 +363,28 @@ function maskApiKey(key) {
   return key.substring(0, 4) + '****' + key.substring(key.length - 4);
 }
 
+/**
+ * Save FedEx connection settings to data/settings.json.
+ */
+function saveFedexSettings(fedexData) {
+  const current = getSettings();
+  current.fedex = {
+    clientId: fedexData.clientId !== undefined ? fedexData.clientId.trim() : current.fedex.clientId,
+    clientSecret: fedexData.clientSecret !== undefined ? fedexData.clientSecret.trim() : current.fedex.clientSecret,
+    accountNumber: fedexData.accountNumber !== undefined ? fedexData.accountNumber.trim() : current.fedex.accountNumber,
+    useSandbox: fedexData.useSandbox !== undefined ? !!fedexData.useSandbox : current.fedex.useSandbox
+  };
+  persistSettings(current);
+}
+
+/**
+ * Returns true if FedEx credentials are configured.
+ */
+function isFedexConfigured() {
+  const s = getSettings();
+  return !!(s.fedex.clientId && s.fedex.clientSecret && s.fedex.accountNumber);
+}
+
 module.exports = {
   getSettings,
   saveSettings,
@@ -356,5 +396,7 @@ module.exports = {
   cleanAddressSpacing,
   saveTemplate,
   deleteTemplate,
-  setActiveTemplate
+  setActiveTemplate,
+  saveFedexSettings,
+  isFedexConfigured
 };

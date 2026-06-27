@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/lucide@0.460.0"></script>
   <!-- Stylesheet -->
   <link rel="stylesheet" href="style.css">
   <!-- Favicon -->
@@ -401,6 +401,74 @@
         <div class="current-config-row">
           <strong>Dettagli:</strong>
           <span id="shipper-details">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connessione FedEx Card -->
+    <div class="settings-card" style="margin-top: 32px;">
+      <div class="settings-card-title">
+        <i data-lucide="shield-check" style="color: #4d148c;"></i>
+        Connessione API REST FedEx
+      </div>
+      <p class="settings-card-desc">
+        Inserisci le credenziali API REST e il numero del conto FedEx per abilitare la sincronizzazione automatica dei tracking.
+      </p>
+
+      <form class="settings-form" id="fedex-settings-form">
+        <div class="form-group">
+          <label for="fedex-client-id"><i data-lucide="key"></i> Client ID (API Key)</label>
+          <input type="password" id="fedex-client-id" placeholder="Incolla il Client ID di FedEx" required>
+        </div>
+
+        <div class="form-group">
+          <label for="fedex-client-secret"><i data-lucide="lock"></i> Client Secret (Secret Key)</label>
+          <input type="password" id="fedex-client-secret" placeholder="Incolla il Client Secret di FedEx" required>
+        </div>
+
+        <div class="form-group">
+          <label for="fedex-account-number"><i data-lucide="hash"></i> Shipping Account Number (Numero Conto)</label>
+          <input type="text" id="fedex-account-number" placeholder="Es. 123456789" required>
+          <span class="form-hint">Il tuo codice cliente/conto FedEx a 9 cifre</span>
+        </div>
+
+        <div class="form-group">
+          <label class="state-checkbox-item" style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(0,0,0,0.02); border: 1px solid var(--card-border); border-radius: var(--border-radius-sm); cursor: pointer;">
+            <input type="checkbox" id="fedex-use-sandbox" checked>
+            <span>Usa Ambiente di Test (Sandbox)</span>
+          </label>
+        </div>
+
+        <div class="settings-actions">
+          <button type="button" class="btn btn-secondary" id="fedex-test-btn">
+            <i data-lucide="wifi"></i> Testa Connessione FedEx
+          </button>
+          <button type="submit" class="btn btn-primary" id="fedex-save-btn">
+            <i data-lucide="save"></i> Salva Impostazioni FedEx
+          </button>
+        </div>
+      </form>
+
+      <div class="connection-result" id="fedex-connection-result">
+        <i data-lucide="check-circle"></i>
+        <span id="fedex-connection-result-text"></span>
+      </div>
+
+      <div class="current-config" id="fedex-current-config" style="margin-top: 24px;">
+        <div class="current-config-title">Configurazione FedEx Attuale</div>
+        <div class="current-config-row">
+          <strong>Stato:</strong>
+          <span id="fedex-config-status">
+            <span class="config-status-dot red"></span> Non configurato
+          </span>
+        </div>
+        <div class="current-config-row">
+          <strong>Ambiente:</strong>
+          <span id="fedex-config-env">—</span>
+        </div>
+        <div class="current-config-row">
+          <strong>Conto:</strong>
+          <span id="fedex-config-account">—</span>
         </div>
       </div>
     </div>

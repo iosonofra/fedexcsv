@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/lucide@0.460.0"></script>
   <!-- Stylesheet -->
   <link rel="stylesheet" href="style.css">
   <!-- Favicon -->
@@ -156,7 +156,7 @@
             <table class="orders-table" id="orders-table">
               <thead>
                 <tr>
-                  <th width="40"><input type="checkbox" id="master-checkbox"></th>
+                  <th width="40"><input type="checkbox" id="master-checkbox" aria-label="Seleziona tutti gli ordini"></th>
                   <th width="100">ID Ordine</th>
                   <th width="120">Riferimento</th>
                   <th width="160">Data Ordine</th>
@@ -204,8 +204,20 @@
       <!-- SEZIONE 2: Importazione Tracking da FedEx (Associazione) -->
       <div id="section-import-tracking" class="page-section hidden">
         
-        <!-- Step 1: Upload File -->
-        <section class="dashboard-card" id="import-step-1">
+        <!-- Selettore della modalità di importazione -->
+        <div class="tab-selector" style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid var(--card-border); padding-bottom: 12px;">
+          <button class="btn btn-outline active" id="tab-import-file" style="flex: 1; justify-content: center;">
+            <i data-lucide="file-spreadsheet"></i> Importa da file Excel / CSV
+          </button>
+          <button class="btn btn-outline" id="tab-import-direct" style="flex: 1; justify-content: center;">
+            <i data-lucide="refresh-cw"></i> Sincronizza direttamente da FedEx API
+          </button>
+        </div>
+
+        <!-- Pannello Importazione da File -->
+        <div id="panel-import-file">
+          <!-- Step 1: Upload File -->
+          <section class="dashboard-card" id="import-step-1">
           <div class="list-header" style="margin-bottom: 20px;">
             <div class="list-summary">
               <h3>1. Carica File Risultati FedEx</h3>
@@ -259,6 +271,16 @@
               </table>
             </div>
 
+            <div id="import-progress-container" class="progress-container hidden">
+              <div class="progress-header">
+                <span id="import-progress-status">Importazione in corso...</span>
+                <span id="import-progress-percent">0%</span>
+              </div>
+              <div class="progress-track">
+                <div id="import-progress-bar" class="progress-fill"></div>
+              </div>
+            </div>
+
             <div class="filter-actions" style="margin-top: 24px;">
               <button type="button" class="btn btn-secondary" id="btn-cancel-mapping">
                 <i data-lucide="x"></i> Annulla
@@ -269,6 +291,122 @@
             </div>
           </div>
         </section>
+        </div> <!-- Fine panel-import-file -->
+
+        <!-- Pannello Sincronizzazione Diretta -->
+        <div id="panel-import-direct" class="hidden">
+          <section class="dashboard-card" id="direct-step-1">
+            <div class="list-header" style="margin-bottom: 20px;">
+              <div class="list-summary">
+                <h3>Sincronizzazione Diretta con FedEx API</h3>
+                <p>Trova gli ordini già esportati su Excel che non hanno ancora un codice tracking associato in PrestaShop.</p>
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+                  <input type="checkbox" id="direct-include-synced" style="width: auto; margin: 0; cursor: pointer;">
+                  <label for="direct-include-synced" style="font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                    Includi ordini che hanno già un codice tracking salvato
+                  </label>
+                </div>
+              </div>
+              <button class="btn btn-accent" id="btn-find-pending-sync">
+                <i data-lucide="search"></i> Cerca Ordini Esportati
+              </button>
+            </div>
+            
+            <div id="direct-pending-container" class="hidden">
+              <div class="list-summary" style="margin-bottom: 12px; margin-top: 24px;">
+                <h4 id="direct-pending-count-text">Trovati 0 ordini pendenti</h4>
+                <p>Seleziona gli ordini di cui desideri verificare il tracking su FedEx.</p>
+              </div>
+              
+              <div class="table-container" style="max-height: 300px; border: 1px solid var(--card-border); border-radius: var(--border-radius-sm); margin-bottom: 20px;">
+                <table class="orders-table" style="margin: 0; min-width: 100%;">
+                  <thead>
+                    <tr>
+                      <th width="40"><input type="checkbox" id="direct-master-checkbox" checked aria-label="Seleziona tutti gli ordini pendenti"></th>
+                      <th width="100">ID Ordine</th>
+                      <th width="120">Riferimento</th>
+                      <th width="160">Data Ordine</th>
+                      <th>Cliente</th>
+                      <th>Città Destinazione</th>
+                    </tr>
+                  </thead>
+                  <tbody id="direct-pending-table-body">
+                    <!-- righe dinamiche -->
+                  </tbody>
+                </table>
+              </div>
+
+              <div id="direct-progress-container" class="progress-container hidden" style="margin-top: 20px; margin-bottom: 20px;">
+                <div class="progress-header">
+                  <span id="direct-progress-status">Sincronizzazione in corso...</span>
+                  <span id="direct-progress-percent">0%</span>
+                </div>
+                <div class="progress-track">
+                  <div id="direct-progress-bar" class="progress-fill"></div>
+                </div>
+              </div>
+
+              <div class="filter-actions" style="margin-top: 24px;">
+                <button type="button" class="btn btn-accent" id="btn-start-direct-sync">
+                  <i data-lucide="refresh-cw"></i> Avvia Sincronizzazione con FedEx
+                </button>
+              </div>
+            </div>
+
+            <div id="direct-empty-state" class="empty-state hidden" style="padding: 40px 20px;">
+              <i data-lucide="check-circle" style="color: var(--color-success)"></i>
+              <h3>Tutti gli ordini sono aggiornati!</h3>
+              <p>Non ci sono ordini esportati in attesa di tracking.</p>
+            </div>
+          </section>
+
+          <section class="dashboard-card hidden" id="direct-step-2">
+            <div class="list-header" style="margin-bottom: 20px;">
+              <div class="list-summary">
+                <h3>Risultati Ricerca Tracking su FedEx</h3>
+                <p>Di seguito sono riportati i codici di tracking rilevati da FedEx. Seleziona quali desideri applicare su PrestaShop.</p>
+              </div>
+            </div>
+            
+            <div class="table-container" style="max-height: 350px; border: 1px solid var(--card-border); border-radius: var(--border-radius-sm); margin-bottom: 20px;">
+              <table class="orders-table" style="margin: 0; min-width: 100%;">
+                <thead>
+                  <tr>
+                    <th width="40"><input type="checkbox" id="direct-results-master-checkbox" checked aria-label="Seleziona tutti i tracking trovati"></th>
+                    <th width="100">ID Ordine</th>
+                    <th width="120">Riferimento</th>
+                    <th>Cliente</th>
+                    <th>Città Destinazione</th>
+                    <th>Tracking FedEx Rilevato</th>
+                    <th>Stato Ricerca</th>
+                  </tr>
+                </thead>
+                <tbody id="direct-results-table-body">
+                  <!-- righe dinamiche -->
+                </tbody>
+              </table>
+            </div>
+
+            <div id="direct-import-progress-container" class="progress-container hidden" style="margin-top: 20px; margin-bottom: 20px;">
+              <div class="progress-header">
+                <span id="direct-import-progress-status">Importazione in corso...</span>
+                <span id="direct-import-progress-percent">0%</span>
+              </div>
+              <div class="progress-track">
+                <div id="direct-import-progress-bar" class="progress-fill"></div>
+              </div>
+            </div>
+
+            <div class="filter-actions" style="margin-top: 24px;">
+              <button type="button" class="btn btn-secondary" id="btn-cancel-direct-results">
+                <i data-lucide="arrow-left"></i> Indietro
+              </button>
+              <button type="button" class="btn btn-accent" id="btn-apply-direct-import">
+                <i data-lucide="play"></i> Applica Tracking Selezionati su PrestaShop
+              </button>
+            </div>
+          </section>
+        </div>
 
         <!-- Step 3: Riepilogo Risultati Importazione -->
         <section class="dashboard-card hidden" id="import-step-3">
@@ -401,25 +539,25 @@
             </div>
 
             <!-- Toolbar Template Spedizione -->
-            <div style="background: rgba(0, 0, 0, 0.02); padding: 12px 16px; border-radius: var(--border-radius-md); border: 1px solid var(--card-border); margin-bottom: 24px;">
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; flex-wrap: wrap;">
+            <div class="template-toolbar-container">
+              <div class="template-toolbar">
                 <!-- Left side: Select and Active Badge -->
-                <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px;">
-                  <label style="margin: 0; font-size: 0.85rem; font-weight: 700; color: var(--text-primary);">Template:</label>
-                  <select id="shipment-template-select" style="flex: 1; min-width: 120px; height: 36px; padding: 6px 12px; font-size: 0.85rem; border-radius: var(--border-radius-sm); border: 1px solid var(--card-border); margin: 0;"></select>
-                  <span class="badge" style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); font-size: 0.72rem; padding: 4px 8px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; flex-shrink: 0;">
+                <div class="template-toolbar-left">
+                  <label>Template:</label>
+                  <select id="shipment-template-select" class="template-toolbar-select"></select>
+                  <span class="badge template-active-badge">
                     <i data-lucide="check" style="width: 10px; height: 10px;"></i> ATTIVO
                   </span>
                 </div>
                 <!-- Right side: Actions -->
-                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                  <button type="button" class="btn btn-sm" id="btn-add-shipment-template" style="background: rgba(108, 35, 194, 0.06); color: var(--fedex-purple-light); border: 1px solid rgba(108, 35, 194, 0.15); height: 36px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.8rem;">
+                <div class="template-toolbar-actions">
+                  <button type="button" class="btn btn-sm btn-template-new" id="btn-add-shipment-template">
                     <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i> Nuovo
                   </button>
-                  <button type="button" class="btn btn-sm" id="btn-rename-shipment-template" style="background: rgba(245, 158, 11, 0.06); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.15); height: 36px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.8rem;">
+                  <button type="button" class="btn btn-sm btn-template-rename" id="btn-rename-shipment-template">
                     <i data-lucide="edit" style="width: 14px; height: 14px;"></i> Rinomina
                   </button>
-                  <button type="button" class="btn btn-sm" id="btn-delete-shipment-template" style="background: rgba(239, 68, 68, 0.06); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.15); height: 36px; width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Elimina Template">
+                  <button type="button" class="btn btn-sm btn-template-delete" id="btn-delete-shipment-template" title="Elimina Template" aria-label="Elimina template spedizione">
                     <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                   </button>
                 </div>
@@ -469,8 +607,8 @@
               </select>
             </div>
             
-            <div style="margin-top: auto; padding-top: 28px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;">
-              <p style="font-size:0.8rem; color:var(--text-muted); margin: 0; line-height: 1.4; flex: 1; min-width: 240px;">
+            <div class="settings-footer-toolbar">
+              <p class="settings-footer-hint">
                 <i data-lucide="info" style="display:inline-block; width:14px; height:14px; margin-right:4px; vertical-align:middle; color: var(--fedex-purple-light);"></i>
                 Questi valori verranno inseriti automaticamente in fase di esportazione per tutti gli ordini che non hanno specifiche personalizzate.
               </p>
@@ -490,25 +628,25 @@
             </div>
 
             <!-- Toolbar Template Mittente -->
-            <div style="background: rgba(0, 0, 0, 0.02); padding: 12px 16px; border-radius: var(--border-radius-md); border: 1px solid var(--card-border); margin-bottom: 24px;">
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; flex-wrap: wrap;">
+            <div class="template-toolbar-container">
+              <div class="template-toolbar">
                 <!-- Left side: Select and Active Badge -->
-                <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px;">
-                  <label style="margin: 0; font-size: 0.85rem; font-weight: 700; color: var(--text-primary);">Template:</label>
-                  <select id="shipper-template-select" style="flex: 1; min-width: 120px; height: 36px; padding: 6px 12px; font-size: 0.85rem; border-radius: var(--border-radius-sm); border: 1px solid var(--card-border); margin: 0;"></select>
-                  <span class="badge" style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); font-size: 0.72rem; padding: 4px 8px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; flex-shrink: 0;">
+                <div class="template-toolbar-left">
+                  <label>Template:</label>
+                  <select id="shipper-template-select" class="template-toolbar-select"></select>
+                  <span class="badge template-active-badge">
                     <i data-lucide="check" style="width: 10px; height: 10px;"></i> ATTIVO
                   </span>
                 </div>
                 <!-- Right side: Actions -->
-                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                  <button type="button" class="btn btn-sm" id="btn-add-shipper-template" style="background: rgba(108, 35, 194, 0.06); color: var(--fedex-purple-light); border: 1px solid rgba(108, 35, 194, 0.15); height: 36px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.8rem;">
+                <div class="template-toolbar-actions">
+                  <button type="button" class="btn btn-sm btn-template-new" id="btn-add-shipper-template">
                     <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i> Nuovo
                   </button>
-                  <button type="button" class="btn btn-sm" id="btn-rename-shipper-template" style="background: rgba(245, 158, 11, 0.06); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.15); height: 36px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 0.8rem;">
+                  <button type="button" class="btn btn-sm btn-template-rename" id="btn-rename-shipper-template">
                     <i data-lucide="edit" style="width: 14px; height: 14px;"></i> Rinomina
                   </button>
-                  <button type="button" class="btn btn-sm" id="btn-delete-shipper-template" style="background: rgba(239, 68, 68, 0.06); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.15); height: 36px; width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Elimina Template">
+                  <button type="button" class="btn btn-sm btn-template-delete" id="btn-delete-shipper-template" title="Elimina Template" aria-label="Elimina template mittente">
                     <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                   </button>
                 </div>
@@ -561,8 +699,8 @@
               </div>
             </div>
 
-            <div style="margin-top: auto; padding-top: 28px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;">
-              <p style="font-size:0.8rem; color:var(--text-muted); margin: 0; line-height: 1.4; flex: 1; min-width: 240px;">
+            <div class="settings-footer-toolbar">
+              <p class="settings-footer-hint">
                 <i data-lucide="info" style="display:inline-block; width:14px; height:14px; margin-right:4px; vertical-align:middle; color: var(--fedex-orange);"></i>
                 I dati mittente salvati verranno applicati come indirizzo di origine per tutte le spedizioni generate.
               </p>

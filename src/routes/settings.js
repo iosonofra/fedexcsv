@@ -3,6 +3,7 @@ const router = express.Router();
 const { getFedExDefaults } = require('../services/fedexExcel');
 const settingsStore = require('../services/settingsStore');
 const PrestaShopClient = require('../services/prestashop');
+const fedexApi = require('../services/fedexApi');
 
 // GET /api/settings/defaults — FedEx template defaults
 router.get('/defaults', async (req, res) => {
@@ -241,6 +242,106 @@ router.delete('/templates', (req, res) => {
   } catch (error) {
     console.error('Error deleting template:', error);
     res.status(400).json({ error: error.message });
+  }
+});
+
+// GET /api/settings/fedex — retrieve current FedEx configuration (keys masked)
+router.get('/fedex', (req, res) => {
+  try {
+    const settings = settingsStore.getSettings();
+    const fedex = settings.fedex || {};
+    res.json({
+      clientId: settingsStore.maskApiKey(fedex.clientId),
+      clientSecret: settingsStore.maskApiKey(fedex.clientSecret),
+      accountNumber: fedex.accountNumber || '',
+      useSandbox: fedex.useSandbox !== undefined ? fedex.useSandbox : true,
+      configured: settingsStore.isFedexConfigured()
+    });
+  } catch (error) {
+    console.error('Error reading FedEx settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Helper to check if a submitted value is a dummy/masked value
+const isDummy = (val) => {
+  if (!val) return true;
+  const str = String(val).trim();
+  return str === '' || str.includes('•') || str.includes('\u2022') || str.includes('*');
+};
+
+// POST /api/settings/fedex — save FedEx connection settings
+router.post('/fedex', (req, res) => {
+  try {
+    let { clientId, clientSecret, accountNumber, useSandbox } = req.body;
+
+    if (!accountNumber) {
+      return res.status(400).json({ error: 'Il Numero Conto è obbligatorio.' });
+    }
+
+    const settings = settingsStore.getSettings();
+    const fedex = settings.fedex || {};
+
+    // Support dummy values to preserve actual key on save
+    if (isDummy(clientId)) {
+      clientId = fedex.clientId;
+    }
+    if (isDummy(clientSecret)) {
+      clientSecret = fedex.clientSecret;
+    }
+
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({ error: 'Client ID e Client Secret sono obbligatori.' });
+    }
+
+    settingsStore.saveFedexSettings({
+      clientId: clientId.trim(),
+      clientSecret: clientSecret.trim(),
+      accountNumber: accountNumber.trim(),
+      useSandbox: !!useSandbox
+    });
+
+    res.json({ success: true, message: 'Impostazioni FedEx salvate correttamente.' });
+  } catch (error) {
+    console.error('Error saving FedEx settings:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/settings/fedex/test — test connection without saving
+router.post('/fedex/test', async (req, res) => {
+  try {
+    let { clientId, clientSecret, useSandbox } = req.body;
+
+    const settings = settingsStore.getSettings();
+    const fedex = settings.fedex || {};
+
+    // Support dummy values to test using already saved actual keys
+    if (isDummy(clientId)) {
+      clientId = fedex.clientId;
+    }
+    if (isDummy(clientSecret)) {
+      clientSecret = fedex.clientSecret;
+    }
+
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({ error: 'Client ID e Client Secret sono obbligatori per il test.' });
+    }
+
+    // Try to get a token
+    const token = await fedexApi.getAccessToken(clientId.trim(), clientSecret.trim(), useSandbox !== undefined ? !!useSandbox : fedex.useSandbox);
+
+    if (token) {
+      res.json({
+        success: true,
+        message: 'Connessione a FedEx riuscita! Autenticazione completata con successo.'
+      });
+    } else {
+      res.status(400).json({ error: 'Non è stato possibile ottenere un token di accesso da FedEx.' });
+    }
+  } catch (error) {
+    console.error('FedEx connection test failed:', error.message);
+    res.status(400).json({ error: `Connessione fallita: ${error.message}` });
   }
 });
 
