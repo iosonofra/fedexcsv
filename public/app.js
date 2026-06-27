@@ -9,16 +9,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const ordersTableBody = document.getElementById('orders-table-body');
   const ordersCountText = document.getElementById('orders-count-text');
   const masterCheckbox = document.getElementById('master-checkbox');
-  const selectAllBtn = document.getElementById('select-all-btn');
-  const deselectAllBtn = document.getElementById('deselect-all-btn');
   const actionFooter = document.getElementById('action-footer');
   const selectedBadge = document.getElementById('selected-badge');
   const exportBtn = document.getElementById('export-btn');
   
   // Elementi Impostazioni Mittente
-  const toggleShipperBtn = document.getElementById('toggle-shipper-settings');
-  const shipperChevron = document.getElementById('shipper-chevron');
-  const shipperSettingsPanel = document.getElementById('shipper-settings-panel');
   const saveShipperBtn = document.getElementById('save-shipper-btn');
   
   const shipperInputs = {
@@ -61,24 +56,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initializeApp();
 
   // Listener degli Eventi
-  toggleShipperBtn.addEventListener('click', toggleShipperPanel);
   saveShipperBtn.addEventListener('click', saveShipperSettings);
   filterForm.addEventListener('submit', handleSearch);
   clearFiltersBtn.addEventListener('click', clearFilters);
   masterCheckbox.addEventListener('change', handleMasterCheckboxChange);
-  selectAllBtn.addEventListener('click', selectAllOrders);
-  deselectAllBtn.addEventListener('click', deselectAllOrders);
   exportBtn.addEventListener('click', handleExport);
-
-  // Mostra/Nascondi pannello mittente
-  function toggleShipperPanel() {
-    const isCollapsed = shipperSettingsPanel.classList.toggle('collapsed');
-    if (isCollapsed) {
-      shipperChevron.style.transform = 'rotate(0deg)';
-    } else {
-      shipperChevron.style.transform = 'rotate(180deg)';
-    }
-  }
 
   // Carica l'elenco degli stati da PrestaShop e popola il filtro dropdown
   async function loadOrderStates() {
@@ -342,14 +324,21 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const stateName = order.state_name || `Stato ${order.current_state}`;
 
-      const productsHtml = (order.products && order.products.length > 0)
-        ? order.products.map(p => `
-            <div class="product-item">
-              <strong class="product-qty">${p.qty}x</strong>
-              <span class="product-name" title="${escapeHTML(p.name)}">${escapeHTML(p.name)}</span>
-            </div>
-          `).join('')
-        : '<span class="text-muted">—</span>';
+      let productsHtml = '';
+      if (order.products && order.products.length > 0) {
+        productsHtml = `
+          <div class="products-cell-list">
+            ${order.products.map(p => `
+              <div class="product-inline-item" title="${escapeHTML(p.name)}">
+                <span class="product-qty">${p.qty}x</span>
+                <span class="product-name">${escapeHTML(p.name)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } else {
+        productsHtml = '<span class="text-muted">—</span>';
+      }
 
       const customerHtml = order.customer_error
         ? `<div style="display:inline-flex; align-items:center; gap:6px;" title="Attenzione: errore di caricamento cliente da PrestaShop o ID non valido">
@@ -385,9 +374,9 @@ document.addEventListener('DOMContentLoaded', () => {
           <td>${order.id}</td>
           <td><span class="order-ref-badge">${order.reference}</span></td>
           <td>${formattedDate}</td>
-          <td>${customerHtml}</td>
-          <td>${addressHtml}</td>
-          <td>${cityHtml}</td>
+          <td><div class="truncate-cell" style="max-width: 140px;" title="${escapeHTML(order.customer_name)}">${customerHtml}</div></td>
+          <td><div class="truncate-cell" style="max-width: 180px;" title="${escapeHTML(order.delivery_address)}">${addressHtml}</div></td>
+          <td><div class="truncate-cell" style="max-width: 110px;" title="${escapeHTML(order.delivery_city)}">${cityHtml}</div></td>
           <td class="text-center">${provHtml}</td>
           <td class="text-center">${countryHtml}</td>
           <td><div class="products-cell">${productsHtml}</div></td>
@@ -440,31 +429,25 @@ document.addEventListener('DOMContentLoaded', () => {
     updateActionFooter();
   }
 
-  // Seleziona/deseleziona tutti gli ordini caricati
-  function selectAllOrders() {
-    loadedOrders.forEach(order => selectedOrders.set(order.id, order));
-    const checkboxes = ordersTableBody.querySelectorAll('.order-checkbox');
-    checkboxes.forEach(cb => cb.checked = true);
-    masterCheckbox.checked = true;
-    updateActionFooter();
-  }
-
-  function deselectAllOrders() {
-    selectedOrders.clear();
-    const checkboxes = ordersTableBody.querySelectorAll('.order-checkbox');
-    checkboxes.forEach(cb => cb.checked = false);
-    masterCheckbox.checked = false;
-    updateActionFooter();
-  }
-
   function updateMasterCheckboxState() {
     const checkboxes = ordersTableBody.querySelectorAll('.order-checkbox');
     if (checkboxes.length === 0) {
       masterCheckbox.checked = false;
+      masterCheckbox.indeterminate = false;
       return;
     }
-    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-    masterCheckbox.checked = allChecked;
+    const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    
+    if (checkedCount === 0) {
+      masterCheckbox.checked = false;
+      masterCheckbox.indeterminate = false;
+    } else if (checkedCount === checkboxes.length) {
+      masterCheckbox.checked = true;
+      masterCheckbox.indeterminate = false;
+    } else {
+      masterCheckbox.checked = false;
+      masterCheckbox.indeterminate = true;
+    }
   }
 
   function updateActionFooter() {
@@ -643,55 +626,67 @@ document.addEventListener('DOMContentLoaded', () => {
   // Navigazione Tab
   const menuOrders = document.getElementById('menu-orders');
   const menuImportTracking = document.getElementById('menu-import-tracking');
+  const menuShipmentSettings = document.getElementById('menu-shipment-settings');
   const menuHistory = document.getElementById('menu-history');
+  
   const sectionOrders = document.getElementById('section-orders');
   const sectionImportTracking = document.getElementById('section-import-tracking');
+  const sectionShipmentSettings = document.getElementById('section-shipment-settings');
   const sectionHistory = document.getElementById('section-history');
+  
   const mainHeaderTitle = document.querySelector('.header-title h1');
   const mainHeaderSubtitle = document.querySelector('.header-title p');
 
-  menuOrders.addEventListener('click', () => {
-    menuOrders.classList.add('active');
-    menuImportTracking.classList.remove('active');
-    if (menuHistory) menuHistory.classList.remove('active');
-    sectionOrders.classList.remove('hidden');
-    sectionImportTracking.classList.add('hidden');
-    if (sectionHistory) sectionHistory.classList.add('hidden');
-    mainHeaderTitle.textContent = 'Gestione Spedizioni PrestaShop';
-    mainHeaderSubtitle.textContent = 'Seleziona gli ordini da dagimarket.com e compila l\'Excel per la spedizione batch FedEx';
-  });
-
-  menuImportTracking.addEventListener('click', () => {
+  function deactivateAllTabs() {
     menuOrders.classList.remove('active');
-    menuImportTracking.classList.add('active');
+    menuImportTracking.classList.remove('active');
+    if (menuShipmentSettings) menuShipmentSettings.classList.remove('active');
     if (menuHistory) menuHistory.classList.remove('active');
-    sectionOrders.classList.add('hidden');
-    sectionImportTracking.classList.remove('hidden');
-    if (sectionHistory) sectionHistory.classList.add('hidden');
-    mainHeaderTitle.textContent = 'Importazione Tracking FedEx';
-    mainHeaderSubtitle.textContent = 'Carica il file con i tracking di ritorno generati da FedEx per associarli in PrestaShop';
     
-    // Nascondi footer di selezione ordini se attivo
+    sectionOrders.classList.add('hidden');
+    sectionImportTracking.classList.add('hidden');
+    if (sectionShipmentSettings) sectionShipmentSettings.classList.add('hidden');
+    if (sectionHistory) sectionHistory.classList.add('hidden');
+    
     if (actionFooter) {
       actionFooter.classList.add('hidden');
     }
+  }
+
+  menuOrders.addEventListener('click', () => {
+    deactivateAllTabs();
+    menuOrders.classList.add('active');
+    sectionOrders.classList.remove('hidden');
+    mainHeaderTitle.textContent = 'Gestione Spedizioni PrestaShop';
+    mainHeaderSubtitle.textContent = 'Seleziona gli ordini da dagimarket.com e compila l\'Excel per la spedizione batch FedEx';
+    updateActionFooter();
   });
+
+  menuImportTracking.addEventListener('click', () => {
+    deactivateAllTabs();
+    menuImportTracking.classList.add('active');
+    sectionImportTracking.classList.remove('hidden');
+    mainHeaderTitle.textContent = 'Importazione Tracking FedEx';
+    mainHeaderSubtitle.textContent = 'Carica il file con i tracking di ritorno generati da FedEx per associarli in PrestaShop';
+  });
+
+  if (menuShipmentSettings) {
+    menuShipmentSettings.addEventListener('click', () => {
+      deactivateAllTabs();
+      menuShipmentSettings.classList.add('active');
+      sectionShipmentSettings.classList.remove('hidden');
+      mainHeaderTitle.textContent = 'Configurazione Spedizione';
+      mainHeaderSubtitle.textContent = 'Imposta i valori predefiniti e i dettagli del mittente per le spedizioni FedEx';
+    });
+  }
 
   if (menuHistory && sectionHistory) {
     menuHistory.addEventListener('click', () => {
-      menuOrders.classList.remove('active');
-      menuImportTracking.classList.remove('active');
+      deactivateAllTabs();
       menuHistory.classList.add('active');
-      sectionOrders.classList.add('hidden');
-      sectionImportTracking.classList.add('hidden');
       sectionHistory.classList.remove('hidden');
       mainHeaderTitle.textContent = 'Storico Operazioni';
       mainHeaderSubtitle.textContent = 'Visualizza il registro delle esportazioni ed importazioni effettuate';
-      
-      if (actionFooter) {
-        actionFooter.classList.add('hidden');
-      }
-      
       loadHistory();
     });
   }
@@ -821,7 +816,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderMappingStep(data) {
-    const { headers, preview, autoMapped } = data;
+    const { headers, preview, autoMapped, totalRows } = data;
+    
+    const importDetectedRows = document.getElementById('import-detected-rows');
+    if (importDetectedRows) {
+      importDetectedRows.textContent = totalRows !== undefined ? totalRows : 0;
+    }
     
     // Popola i menu a tendina
     mapReferenceCol.innerHTML = '';
@@ -905,7 +905,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       btnStartImport.disabled = true;
       const originalContent = btnStartImport.innerHTML;
-      btnStartImport.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Importazione in corso...';
+      btnStartImport.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Importazione avviata...';
 
       try {
         const response = await fetch('/api/tracking/import', {
@@ -926,17 +926,60 @@ document.addEventListener('DOMContentLoaded', () => {
           throw new Error(err.error || 'Errore durante l\'aggiornamento dei tracking.');
         }
 
-        const result = await response.json();
-        renderResultsStep(result);
+        const initialJob = await response.json();
+        const importId = initialJob.importId;
+        const total = initialJob.total;
+
+        // Start polling the status endpoint
+        pollImportStatus(importId, total, originalContent);
         
       } catch (error) {
         console.error(error);
         showToast('Importazione Fallita', error.message, 'error');
-      } finally {
         btnStartImport.disabled = false;
         btnStartImport.innerHTML = originalContent;
       }
     });
+  }
+
+  function pollImportStatus(importId, total, originalContent) {
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/tracking/import-status?id=${importId}`);
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Errore nella verifica dello stato.');
+        }
+
+        const job = await response.json();
+
+        if (job.status === 'processing') {
+          btnStartImport.innerHTML = `<span class="spinner" style="width:14px;height:14px;"></span> Importazione in corso (${job.processed}/${job.total})...`;
+        } else if (job.status === 'completed') {
+          clearInterval(interval);
+          btnStartImport.disabled = false;
+          btnStartImport.innerHTML = originalContent;
+          
+          renderResultsStep({
+            summary: {
+              totalProcessed: job.total,
+              successCount: job.successCount,
+              warningCount: job.warningCount,
+              errorCount: job.errorCount
+            },
+            details: job.details
+          });
+        } else if (job.status === 'failed') {
+          clearInterval(interval);
+          btnStartImport.disabled = false;
+          btnStartImport.innerHTML = originalContent;
+          showToast('Importazione Fallita', job.error || 'Errore durante l\'importazione.', 'error');
+        }
+      } catch (error) {
+        console.error('Errore nel polling:', error);
+        // We do not stop the polling on temporary network errors.
+      }
+    }, 1000);
   }
 
   // Elementi Step 3

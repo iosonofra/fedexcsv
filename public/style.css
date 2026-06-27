@@ -1223,5 +1223,106 @@ input[type="checkbox"] {
   color: var(--color-info);
 }
 
+/* Redesign additions: Truncate cells */
+.truncate-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
+}
+
+/* Custom inline products list with max-height and hidden overflow */
+.products-cell-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 60px; /* ~3 lines limit */
+  overflow: hidden;
+  position: relative;
+}
+
+.product-inline-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+.product-inline-item .product-qty {
+  background: rgba(255, 98, 0, 0.08);
+  color: var(--fedex-orange);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
+.product-inline-item .product-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+/* Table row height uniform optimization (flexible min-height) */
+.orders-table tbody tr {
+  min-height: 52px;
+  transition: var(--transition-smooth);
+}
+
+.orders-table tbody tr:hover {
+  background-color: rgba(108, 35, 194, 0.02) !important;
+}
+
+.orders-table tbody td {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+/* Glassmorphic tab active states */
+.sidebar-menu .menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 12px 16px;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: var(--transition-smooth);
+  margin-bottom: 6px;
+  outline: none;
+  text-align: left;
+}
+
+.sidebar-menu .menu-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--text-primary);
+}
+
+.sidebar-menu .menu-item.active {
+  background: rgba(108, 35, 194, 0.08);
+  color: var(--fedex-purple-light);
+  font-weight: 700;
+}
+
+/* Clean status state badge */
+.state-badge {
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px solid rgba(79, 70, 229, 0.15);
+  color: #4f46e5;
+  padding: 4px 10px;
+  border-radius: 30px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 
 

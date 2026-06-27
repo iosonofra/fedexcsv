@@ -37,104 +37,20 @@
           <i data-lucide="upload"></i>
           <span>Importa Tracking FedEx</span>
         </button>
+        <button class="menu-item" id="menu-shipment-settings">
+          <i data-lucide="sliders"></i>
+          <span>Configurazione Spedizione</span>
+        </button>
         <button class="menu-item" id="menu-history">
           <i data-lucide="history"></i>
           <span>Storico Operazioni</span>
         </button>
       </div>
 
-      <nav class="sidebar-nav">
-        <div class="nav-section-title">Valori Predefiniti Spedizione</div>
-        
-        <div class="form-group">
-          <label for="default-weight"><i data-lucide="scale"></i> Peso (kg)</label>
-          <input type="number" id="default-weight" step="0.5" value="70.0" min="0.1">
-        </div>
-
-        <div class="form-group">
-          <label for="default-length"><i data-lucide="box"></i> Lunghezza (cm)</label>
-          <input type="number" id="default-length" value="80" min="1">
-        </div>
-
-        <div class="form-group">
-          <label for="default-width"><i data-lucide="box"></i> Larghezza (cm)</label>
-          <input type="number" id="default-width" value="60" min="1">
-        </div>
-
-        <div class="form-group">
-          <label for="default-height"><i data-lucide="box"></i> Altezza (cm)</label>
-          <input type="number" id="default-height" value="100" min="1">
-        </div>
-
-        <div class="form-group">
-          <label for="default-service"><i data-lucide="shield-check"></i> Tipo Servizio</label>
-          <select id="default-service">
-            <option value="FEDEX_REGIONAL_ECONOMY_FREIGHT" selected>Regional Economy Freight</option>
-            <option value="FEDEX_REGIONAL_ECONOMY">Regional Economy</option>
-            <option value="FEDEX_INTERNATIONAL_PRIORITY">International Priority</option>
-            <option value="FEDEX_INTERNATIONAL_ECONOMY">International Economy</option>
-            <option value="INTERNATIONAL_FIRST">International First</option>
-            <option value="STANDARD_OVERNIGHT">Standard Overnight</option>
-            <option value="PRIORITY_OVERNIGHT">Priority Overnight</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="default-package"><i data-lucide="package"></i> Tipo Imballo</label>
-          <select id="default-package">
-            <option value="YOUR_PACKAGING" selected>Tuo Imballo (Your Packaging)</option>
-            <option value="FEDEX_BOX">FedEx Box</option>
-            <option value="FEDEX_ENVELOPE">FedEx Envelope</option>
-            <option value="FEDEX_PAK">FedEx Pak</option>
-            <option value="FEDEX_TUBE">FedEx Tube</option>
-          </select>
-        </div>
-
-        <div class="nav-section-title">Dati Mittente (Shipper)</div>
-        <div class="settings-toggle-btn" id="toggle-shipper-settings">
-          <span>Modifica Mittente</span>
-          <i data-lucide="chevron-down" id="shipper-chevron"></i>
-        </div>
-
-        <div class="shipper-settings-content collapsed" id="shipper-settings-panel">
-          <div class="form-group">
-            <label>Nome</label>
-            <input type="text" id="shipper-name" placeholder="Nome Mittente">
-          </div>
-          <div class="form-group">
-            <label>Azienda</label>
-            <input type="text" id="shipper-company" placeholder="Azienda">
-          </div>
-          <div class="form-group">
-            <label>Indirizzo 1</label>
-            <input type="text" id="shipper-address1" placeholder="Indirizzo Mittente">
-          </div>
-          <div class="form-group">
-            <label>Città</label>
-            <input type="text" id="shipper-city" placeholder="Città">
-          </div>
-          <div class="form-group">
-            <label>C.A.P.</label>
-            <input type="text" id="shipper-zip" placeholder="C.A.P.">
-          </div>
-          <div class="form-group">
-            <label>Paese (Codice ISO)</label>
-            <input type="text" id="shipper-country" placeholder="IT">
-          </div>
-          <div class="form-group">
-            <label>Telefono</label>
-            <input type="text" id="shipper-phone" placeholder="Telefono">
-          </div>
-          <button type="button" class="btn btn-secondary btn-sm" id="save-shipper-btn">
-            <i data-lucide="save"></i> Salva Dati
-          </button>
-        </div>
-      </nav>
-
       <div class="sidebar-footer">
         <a href="/settings.html" class="example-template-link">
           <i data-lucide="settings"></i>
-          <span>Impostazioni</span>
+          <span>Impostazioni API</span>
         </a>
         <a href="/templates/fedex_example.xlsx" class="example-template-link" download>
           <i data-lucide="file-spreadsheet"></i>
@@ -232,14 +148,6 @@
               <h3 id="orders-count-text">Trovati 0 ordini</h3>
               <p>Seleziona gli ordini da inserire nella lista di spedizione.</p>
             </div>
-            <div class="list-actions">
-              <button class="btn btn-outline btn-sm" id="select-all-btn">
-                <i data-lucide="check-square"></i> Seleziona Tutti
-              </button>
-              <button class="btn btn-outline btn-sm" id="deselect-all-btn">
-                <i data-lucide="square"></i> Deseleziona Tutti
-              </button>
-            </div>
           </div>
 
           <div class="table-container">
@@ -316,7 +224,7 @@
           <div class="list-header" style="margin-bottom: 20px;">
             <div class="list-summary">
               <h3>2. Verifica Mappatura Colonne</h3>
-              <p>Controlla se le colonne del file sono state associate correttamente ai campi richiesti.</p>
+              <p>Controlla se le colonne del file sono state associate correttamente ai campi richiesti. Rilevate <strong id="import-detected-rows">0</strong> righe di dati valide.</p>
             </div>
           </div>
 
@@ -471,6 +379,121 @@
         </section>
       </div>
 
+      <!-- SEZIONE 4: Configurazione Spedizione (Valori Predefiniti e Mittente) -->
+      <div id="section-shipment-settings" class="page-section hidden">
+        <div class="settings-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px;">
+          
+          <!-- Card 1: Valori Predefiniti Spedizione -->
+          <section class="dashboard-card">
+            <div class="list-header" style="margin-bottom: 24px; border-bottom: 1px solid var(--card-border); padding-bottom: 12px;">
+              <div class="list-summary">
+                <h3 style="display: flex; align-items: center; gap: 8px;"><i data-lucide="scale" style="color:var(--fedex-purple-light)"></i> Valori Predefiniti Spedizione</h3>
+                <p>Configura i parametri di default per la generazione dei file FedEx</p>
+              </div>
+            </div>
+            
+            <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+              <div class="form-group">
+                <label for="default-weight"><i data-lucide="scale"></i> Peso (kg)</label>
+                <input type="number" id="default-weight" step="0.5" value="70.0" min="0.1">
+              </div>
+              <div class="form-group">
+                <label for="default-length"><i data-lucide="box"></i> Lunghezza (cm)</label>
+                <input type="number" id="default-length" value="80" min="1">
+              </div>
+              <div class="form-group">
+                <label for="default-width"><i data-lucide="box"></i> Larghezza (cm)</label>
+                <input type="number" id="default-width" value="60" min="1">
+              </div>
+              <div class="form-group">
+                <label for="default-height"><i data-lucide="box"></i> Altezza (cm)</label>
+                <input type="number" id="default-height" value="100" min="1">
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 16px;">
+              <label for="default-service"><i data-lucide="shield-check"></i> Tipo Servizio Predefinito</label>
+              <select id="default-service">
+                <option value="FEDEX_REGIONAL_ECONOMY_FREIGHT" selected>Regional Economy Freight</option>
+                <option value="FEDEX_REGIONAL_ECONOMY">Regional Economy</option>
+                <option value="FEDEX_INTERNATIONAL_PRIORITY">International Priority</option>
+                <option value="FEDEX_INTERNATIONAL_ECONOMY">International Economy</option>
+                <option value="INTERNATIONAL_FIRST">International First</option>
+                <option value="STANDARD_OVERNIGHT">Standard Overnight</option>
+                <option value="PRIORITY_OVERNIGHT">Priority Overnight</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="default-package"><i data-lucide="package"></i> Tipo Imballo Predefinito</label>
+              <select id="default-package">
+                <option value="YOUR_PACKAGING" selected>Tuo Imballo (Your Packaging)</option>
+                <option value="FEDEX_BOX">FedEx Box</option>
+                <option value="FEDEX_ENVELOPE">FedEx Envelope</option>
+                <option value="FEDEX_PAK">FedEx Pak</option>
+                <option value="FEDEX_TUBE">FedEx Tube</option>
+              </select>
+            </div>
+            
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-top: 16px; line-height: 1.4;">
+              <i data-lucide="info" style="display:inline-block; width:12px; height:12px; margin-right:4px; vertical-align:middle;"></i>
+              Questi valori verranno inseriti automaticamente in fase di esportazione per tutti gli ordini che non hanno specifiche personalizzate.
+            </p>
+          </section>
+
+          <!-- Card 2: Dati Mittente (Shipper) -->
+          <section class="dashboard-card">
+            <div class="list-header" style="margin-bottom: 24px; border-bottom: 1px solid var(--card-border); padding-bottom: 12px;">
+              <div class="list-summary">
+                <h3 style="display: flex; align-items: center; gap: 8px;"><i data-lucide="user" style="color:var(--fedex-orange)"></i> Dati Mittente (Shipper)</h3>
+                <p>Indirizzo e contatti dell'azienda che effettua la spedizione</p>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Nome Mittente / Contatto</label>
+              <input type="text" id="shipper-name" placeholder="Nome Mittente">
+            </div>
+            <div class="form-group">
+              <label>Nome Azienda</label>
+              <input type="text" id="shipper-company" placeholder="Azienda">
+            </div>
+            <div class="form-group">
+              <label>Indirizzo (Via, Numero)</label>
+              <input type="text" id="shipper-address1" placeholder="Indirizzo Mittente">
+            </div>
+
+            <div class="form-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+              <div class="form-group" style="grid-column: span 2;">
+                <label>Città</label>
+                <input type="text" id="shipper-city" placeholder="Città">
+              </div>
+              <div class="form-group">
+                <label>CAP</label>
+                <input type="text" id="shipper-zip" placeholder="CAP">
+              </div>
+            </div>
+
+            <div class="form-grid" style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px;">
+              <div class="form-group">
+                <label>Nazione (ISO)</label>
+                <input type="text" id="shipper-country" placeholder="IT">
+              </div>
+              <div class="form-group">
+                <label>Telefono</label>
+                <input type="text" id="shipper-phone" placeholder="Telefono">
+              </div>
+            </div>
+
+            <div style="margin-top: 24px; display: flex; justify-content: flex-end;">
+              <button type="button" class="btn btn-primary" id="save-shipper-btn" style="min-width: 150px;">
+                <i data-lucide="save"></i> Salva Dati Mittente
+              </button>
+            </div>
+          </section>
+          
+        </div>
+      </div>
     </main>
   </div>
 

@@ -11,6 +11,19 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const REF_REGEX = /ref|riferimento|ordine|order|id_order|id_ordine/i;
 const TRACK_REGEX = /track|airway|awb|trck|waybill|spedizione|carrier_ref/i;
 
+// Store active background imports
+const activeImports = new Map();
+
+// Helper to clean up completed/old imports to prevent memory leaks (keep jobs for 10 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, job] of activeImports.entries()) {
+    if (job.completedAt && (now - job.completedAt > 10 * 60 * 1000)) {
+      activeImports.delete(id);
+    }
+  }
+}, 5 * 60 * 1000);
+
 /**
  * Loads a workbook from a base64 buffer.
  */
@@ -100,13 +113,27 @@ router.post('/parse-file', async (req, res) => {
       trackingColumn = cleanHeaders[0];
     }
 
+    // Count valid data rows (excluding headers)
+    let totalDataRows = 0;
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      let hasValue = false;
+      row.eachCell({ includeEmpty: false }, () => {
+        hasValue = true;
+      });
+      if (hasValue) {
+        totalDataRows++;
+      }
+    }
+
     res.json({
       headers: cleanHeaders,
       preview,
       autoMapped: {
         referenceColumn,
         trackingColumn
-      }
+      },
+      totalRows: totalDataRows
     });
 
   } catch (error) {
@@ -116,7 +143,109 @@ router.post('/parse-file', async (req, res) => {
 });
 
 /**
- * Endpoint to process tracking association with PrestaShop.
+ * Helper to execute the import loop in the background and update job status
+ */
+async function runBackgroundImport(importId, updates, fileName, psClient) {
+  const job = activeImports.get(importId);
+  if (!job) return;
+
+  try {
+    for (const update of updates) {
+      if (!activeImports.has(importId)) break;
+
+      const { reference, trackingNumber, rowNum } = update;
+      try {
+        await delay(100); // Throttling delay between orders
+        
+        // Find orders by reference
+        const orders = await psClient.getOrdersByReference(reference);
+        
+        if (!orders || orders.length === 0) {
+          job.warningCount++;
+          job.results.warnings.push({
+            row: rowNum,
+            reference,
+            message: `Riferimento ordine "${reference}" non trovato su PrestaShop.`
+          });
+          job.processed++;
+          continue;
+        }
+
+        const isDuplicate = orders.length > 1;
+
+        for (const order of orders) {
+          await delay(50); // Small throttle delay between sub-calls
+          
+          // Get order carrier
+          const orderCarrier = await psClient.getOrderCarrierForOrder(order.id);
+          
+          if (!orderCarrier) {
+            job.warningCount++;
+            job.results.warnings.push({
+              row: rowNum,
+              reference,
+              message: `Nessuna spedizione (order_carrier) associata all'ordine ID ${order.id} (Rif: ${reference}).`
+            });
+            continue;
+          }
+
+          // Update tracking
+          await psClient.updateOrderCarrierTracking(orderCarrier.id, orderCarrier, trackingNumber);
+          
+          job.successCount++;
+          job.results.success.push({
+            row: rowNum,
+            reference,
+            orderId: order.id,
+            trackingNumber,
+            message: isDuplicate 
+              ? `Spedizione aggiornata (Riferimento duplicato: ordine ID ${order.id})`
+              : `Spedizione aggiornata con successo (ordine ID ${order.id})`
+          });
+        }
+
+      } catch (err) {
+        console.error(`Errore riga ${rowNum} (${reference}):`, err);
+        job.errorCount++;
+        job.results.errors.push({
+          row: rowNum,
+          reference,
+          message: `Errore nell'aggiornamento dell'ordine: ${err.message}`
+        });
+      }
+
+      job.processed++;
+    }
+
+    job.status = 'completed';
+    job.completedAt = Date.now();
+
+    // Log import in history
+    try {
+      historyStore.addEntry('import', {
+        fileName: fileName,
+        summary: {
+          totalProcessed: job.total,
+          successCount: job.successCount,
+          warningCount: job.warningCount,
+          errorCount: job.errorCount
+        },
+        details: job.results
+      });
+    } catch (err) {
+      console.error('Error writing import log to history storage:', err);
+    }
+
+  } catch (error) {
+    console.error(`Errore durante l'importazione in background ${importId}:`, error);
+    job.status = 'failed';
+    job.error = error.message;
+    job.completedAt = Date.now();
+  }
+}
+
+/**
+ * Endpoint to process tracking association with PrestaShop in the background.
  */
 router.post('/import', async (req, res) => {
   try {
@@ -176,104 +305,64 @@ router.post('/import', async (req, res) => {
       return res.status(400).json({ error: 'Nessun accoppiamento (riferimento ordine, codice tracking) valido trovato nelle righe.' });
     }
 
-    // Process updates in sequence with delay
-    const results = {
-      success: [],
-      warnings: [],
-      errors: []
-    };
+    const importId = `import_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    
+    activeImports.set(importId, {
+      id: importId,
+      fileName,
+      status: 'processing',
+      total: updates.length,
+      processed: 0,
+      successCount: 0,
+      warningCount: 0,
+      errorCount: 0,
+      results: {
+        success: [],
+        warnings: [],
+        errors: []
+      },
+      createdAt: Date.now(),
+      completedAt: null
+    });
 
-    let successCount = 0;
-
-    for (const update of updates) {
-      const { reference, trackingNumber, rowNum } = update;
-      try {
-        await delay(100); // Throttling delay between orders
-        
-        // Find orders by reference
-        const orders = await psClient.getOrdersByReference(reference);
-        
-        if (!orders || orders.length === 0) {
-          results.warnings.push({
-            row: rowNum,
-            reference,
-            message: `Riferimento ordine "${reference}" non trovato su PrestaShop.`
-          });
-          continue;
-        }
-
-        const isDuplicate = orders.length > 1;
-
-        for (const order of orders) {
-          await delay(50); // Small throttle delay between sub-calls
-          
-          // Get order carrier
-          const orderCarrier = await psClient.getOrderCarrierForOrder(order.id);
-          
-          if (!orderCarrier) {
-            results.warnings.push({
-              row: rowNum,
-              reference,
-              message: `Nessuna spedizione (order_carrier) associata all'ordine ID ${order.id} (Rif: ${reference}).`
-            });
-            continue;
-          }
-
-          // Update tracking
-          await psClient.updateOrderCarrierTracking(orderCarrier.id, orderCarrier, trackingNumber);
-          
-          successCount++;
-          results.success.push({
-            row: rowNum,
-            reference,
-            orderId: order.id,
-            trackingNumber,
-            message: isDuplicate 
-              ? `Spedizione aggiornata (Riferimento duplicato: ordine ID ${order.id})`
-              : `Spedizione aggiornata con successo (ordine ID ${order.id})`
-          });
-        }
-
-      } catch (err) {
-        console.error(`Errore riga ${rowNum} (${reference}):`, err);
-        results.errors.push({
-          row: rowNum,
-          reference,
-          message: `Errore nell'aggiornamento dell'ordine: ${err.message}`
-        });
-      }
-    }
-
-    // Log import in history
-    try {
-      historyStore.addEntry('import', {
-        fileName: fileName,
-        summary: {
-          totalProcessed: updates.length,
-          successCount,
-          warningCount: results.warnings.length,
-          errorCount: results.errors.length
-        },
-        details: results
-      });
-    } catch (err) {
-      console.error('Error writing import log to history storage:', err);
-    }
+    // Start background processing loop (no await here)
+    runBackgroundImport(importId, updates, fileName, psClient);
 
     res.json({
-      summary: {
-        totalProcessed: updates.length,
-        successCount,
-        warningCount: results.warnings.length,
-        errorCount: results.errors.length
-      },
-      details: results
+      importId,
+      total: updates.length
     });
 
   } catch (error) {
-    console.error('Errore durante l\'importazione dei tracking:', error);
+    console.error('Errore durante l\'avvio dell\'importazione:', error);
     res.status(500).json({ error: `Errore durante l'importazione: ${error.message}` });
   }
+});
+
+/**
+ * Endpoint to get status and progress of a background tracking import.
+ */
+router.get('/import-status', (req, res) => {
+  const { id } = req.query;
+  if (!id) {
+    return res.status(400).json({ error: 'ID importazione mancante.' });
+  }
+
+  const job = activeImports.get(id);
+  if (!job) {
+    return res.status(404).json({ error: 'Importazione non trovata o scaduta.' });
+  }
+
+  res.json({
+    status: job.status,
+    total: job.total,
+    processed: job.processed,
+    successCount: job.successCount,
+    warningCount: job.warningCount,
+    errorCount: job.errorCount,
+    error: job.error,
+    details: job.status === 'completed' ? job.results : null
+  });
 });
 
 module.exports = router;
