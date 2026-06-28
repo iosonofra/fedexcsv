@@ -67,61 +67,70 @@ async function getTrackingByReference(reference, credentials) {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(today.getDate() - 30);
 
-  const payload = {
-    referencesInformation: {
-      type: 'CUSTOMER_REFERENCE',
-      value: reference
-    },
-    associatedAccountNumber: accountNumber,
-    shipDateBegin: formatDate(thirtyDaysAgo),
-    shipDateEnd: formatDate(today)
-  };
+  const referenceTypes = ['CUSTOMER_REFERENCE', 'SHIPPER_REFERENCE'];
 
-  try {
-    const response = await axios.post(url, payload, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'x-locale': 'it_IT'
-      },
-      timeout: 10000 // 10s timeout
-    });
-
-    const completeResults = response.data.output && response.data.output.completeTrackResults;
-    if (Array.isArray(completeResults) && completeResults.length > 0) {
-      // Look for first valid tracking number in results
-      const result = completeResults[0];
-      const trackingNumber = result.trackingNumber || (result.trackingNumberInfo && result.trackingNumberInfo.trackingNumber);
-      
-      // Also verify if there is an error in trackResults inside
-      const hasErrors = result.trackResults && result.trackResults.some(tr => tr.error && tr.error.code);
-      if (hasErrors) {
-        console.warn(`FedEx track result contains internal errors for reference "${reference}"`);
-        return null;
+  for (const refType of referenceTypes) {
+    const payload = {
+      referencesInformation: {
+        type: refType,
+        value: reference,
+        accountNumber: accountNumber,
+        shipDateBegin: formatDate(thirtyDaysAgo),
+        shipDateEnd: formatDate(today)
       }
-      
-      if (trackingNumber) {
-        // If FedEx API returns the reference code itself as the tracking number, it is a dummy value (failed search)
-        if (trackingNumber.trim().toUpperCase() === reference.trim().toUpperCase()) {
-          return null;
+    };
+
+    try {
+      const response = await axios.post(url, payload, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'x-locale': 'it_IT'
+        },
+        timeout: 10000 // 10s timeout
+      });
+
+      const completeResults = response.data.output && response.data.output.completeTrackResults;
+      if (Array.isArray(completeResults) && completeResults.length > 0) {
+        const result = completeResults[0];
+        const trackingNumber = result.trackingNumber || 
+          (result.trackResults && result.trackResults[0] && result.trackResults[0].trackingNumberInfo && result.trackResults[0].trackingNumberInfo.trackingNumber);
+        
+        const hasErrors = result.trackResults && result.trackResults.some(tr => 
+          tr.error && tr.error.code && tr.error.code !== 'TRACKING.REFERENCENUMBER.NOTFOUND'
+        );
+        if (hasErrors) {
+          console.warn(`FedEx track result contains internal errors for reference "${reference}" (Type: ${refType})`);
+          continue;
         }
-        return trackingNumber;
+        
+        if (trackingNumber) {
+          // If FedEx API returns the reference code itself as the tracking number, it is a dummy value (failed search)
+          if (trackingNumber.trim().toUpperCase() === reference.trim().toUpperCase()) {
+            continue;
+          }
+          return trackingNumber;
+        }
       }
+    } catch (error) {
+      // If FedEx returns 404/NotFound or similar, continue to check next type or skip
+      if (error.response && (error.response.status === 404 || (error.response.data && error.response.data.errors && error.response.data.errors.some(e => e.code === 'NOT.FOUND' || e.code === 'TRACKING.REFERENCENUMBER.NOTFOUND')))) {
+        continue;
+      }
+      
+      console.error(`FedEx Track by Reference error for "${reference}" (Type: ${refType}):`, error.message);
+      if (error.response && error.response.data) {
+        console.error('FedEx Response Detail:', JSON.stringify(error.response.data));
+      }
+      // If it is a bad request error due to reference type, continue to next type
+      if (error.response && error.response.status === 400) {
+        continue;
+      }
+      throw error;
     }
-    
-    return null;
-  } catch (error) {
-    // If FedEx returns 404/NotFound or similar, it means the reference was not found (not shipped yet)
-    if (error.response && (error.response.status === 404 || (error.response.data && error.response.data.errors && error.response.data.errors.some(e => e.code === 'NOT.FOUND')))) {
-      return null;
-    }
-    
-    console.error(`FedEx Track by Reference error for "${reference}":`, error.message);
-    if (error.response && error.response.data) {
-      console.error('FedEx Response Detail:', JSON.stringify(error.response.data));
-    }
-    throw error;
   }
+  
+  return null;
 }
 
 module.exports = {
