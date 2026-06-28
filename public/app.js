@@ -1067,11 +1067,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const menuImportTracking = document.getElementById('menu-import-tracking');
   const menuShipmentSettings = document.getElementById('menu-shipment-settings');
   const menuHistory = document.getElementById('menu-history');
+  const menuSettings = document.getElementById('menu-settings');
   
   const sectionOrders = document.getElementById('section-orders');
   const sectionImportTracking = document.getElementById('section-import-tracking');
   const sectionShipmentSettings = document.getElementById('section-shipment-settings');
   const sectionHistory = document.getElementById('section-history');
+  const sectionSettings = document.getElementById('section-settings');
   
   const mainHeaderTitle = document.querySelector('.header-title h1');
   const mainHeaderSubtitle = document.querySelector('.header-title p');
@@ -1081,11 +1083,13 @@ document.addEventListener('DOMContentLoaded', () => {
     menuImportTracking.classList.remove('active');
     if (menuShipmentSettings) menuShipmentSettings.classList.remove('active');
     if (menuHistory) menuHistory.classList.remove('active');
+    if (menuSettings) menuSettings.classList.remove('active');
     
     sectionOrders.classList.add('hidden');
     sectionImportTracking.classList.add('hidden');
     if (sectionShipmentSettings) sectionShipmentSettings.classList.add('hidden');
     if (sectionHistory) sectionHistory.classList.add('hidden');
+    if (sectionSettings) sectionSettings.classList.add('hidden');
     
     if (actionFooter) {
       actionFooter.classList.add('hidden');
@@ -1099,6 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     mainHeaderTitle.textContent = 'Gestione Spedizioni PrestaShop';
     mainHeaderSubtitle.textContent = 'Seleziona gli ordini da dagimarket.com e compila l\'Excel per la spedizione batch FedEx';
     updateActionFooter();
+    history.replaceState(null, null, ' ');
   });
 
   menuImportTracking.addEventListener('click', () => {
@@ -1107,6 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
     sectionImportTracking.classList.remove('hidden');
     mainHeaderTitle.textContent = 'Importa Tracking su PrestaShop';
     mainHeaderSubtitle.textContent = 'Carica il file con i tracking di ritorno generati da FedEx per associarli in PrestaShop';
+    history.replaceState(null, null, '#import-tracking');
     
     // Default to Excel file upload tab when navigation menu is clicked
     if (tabImportFile) tabImportFile.click();
@@ -1146,6 +1152,7 @@ document.addEventListener('DOMContentLoaded', () => {
       sectionShipmentSettings.classList.remove('hidden');
       mainHeaderTitle.textContent = 'Configurazione Spedizione';
       mainHeaderSubtitle.textContent = 'Imposta i valori predefiniti e i dettagli del mittente per le spedizioni FedEx';
+      history.replaceState(null, null, '#shipment-settings');
     });
   }
 
@@ -1157,8 +1164,61 @@ document.addEventListener('DOMContentLoaded', () => {
       mainHeaderTitle.textContent = 'Storico Operazioni';
       mainHeaderSubtitle.textContent = 'Visualizza il registro delle esportazioni ed importazioni effettuate';
       loadHistory();
+      history.replaceState(null, null, '#history');
     });
   }
+
+  if (menuSettings && sectionSettings) {
+    menuSettings.addEventListener('click', () => {
+      deactivateAllTabs();
+      menuSettings.classList.add('active');
+      sectionSettings.classList.remove('hidden');
+      mainHeaderTitle.textContent = 'Impostazioni API';
+      mainHeaderSubtitle.textContent = 'Gestisci le connessioni API, gli stati dell\'ordine e le opzioni di backup dell\'applicazione';
+      
+      // Update hash to settings default tab (api) if not starting with #settings
+      const hash = window.location.hash;
+      if (!hash.startsWith('#settings')) {
+        history.replaceState(null, null, '#settings-api');
+      }
+    });
+  }
+
+  // Setup config button listener
+  const btnSetupConfig = document.getElementById('btn-setup-config');
+  if (btnSetupConfig) {
+    btnSetupConfig.addEventListener('click', () => {
+      const overlay = document.getElementById('setup-overlay');
+      if (overlay) overlay.classList.add('hidden');
+      if (menuSettings) menuSettings.click();
+    });
+  }
+
+  // URL hash routing
+  function initRoutingFromHash() {
+    const hash = window.location.hash;
+    if (hash === '#settings' || hash.startsWith('#settings')) {
+      if (menuSettings) menuSettings.click();
+      
+      // Also switch active settings tab if the hash specifies one (e.g. #settings-states)
+      if (hash.startsWith('#settings-')) {
+        const subHash = hash.replace('#settings-', '');
+        const validTabs = ['api', 'states', 'backup'];
+        if (validTabs.includes(subHash) && typeof window.switchTab === 'function') {
+          window.switchTab(subHash);
+        }
+      }
+    } else if (hash === '#history') {
+      if (menuHistory) menuHistory.click();
+    } else if (hash === '#shipment-settings') {
+      if (menuShipmentSettings) menuShipmentSettings.click();
+    } else if (hash === '#import-tracking') {
+      if (menuImportTracking) menuImportTracking.click();
+    }
+  }
+
+  setTimeout(initRoutingFromHash, 100);
+
 
   // Gestione File Upload (Drag & Drop)
   const dropZone = document.getElementById('drop-zone');

@@ -385,6 +385,38 @@ function isFedexConfigured() {
   return !!(s.fedex.clientId && s.fedex.clientSecret && s.fedex.accountNumber);
 }
 
+/**
+ * Restore settings from backup.
+ */
+function restoreSettings(settingsData) {
+  if (!settingsData || !settingsData.prestashop || !settingsData.fedex) {
+    throw new Error('Formato delle impostazioni di backup non valido.');
+  }
+
+  // Create clean settings object
+  const settings = {
+    prestashop: {
+      baseUrl: settingsData.prestashop.baseUrl || '',
+      apiKey: settingsData.prestashop.apiKey || '',
+      enabledOrderStates: settingsData.prestashop.enabledOrderStates || []
+    },
+    fedex: {
+      clientId: settingsData.fedex.clientId || '',
+      clientSecret: settingsData.fedex.clientSecret || '',
+      accountNumber: settingsData.fedex.accountNumber || '',
+      useSandbox: settingsData.fedex.useSandbox !== undefined ? !!settingsData.fedex.useSandbox : true
+    },
+    shipmentTemplates: settingsData.shipmentTemplates || [],
+    activeShipmentTemplateId: settingsData.activeShipmentTemplateId || '',
+    shipperTemplates: settingsData.shipperTemplates || [],
+    activeShipperTemplateId: settingsData.activeShipperTemplateId || ''
+  };
+
+  persistSettings(settings);
+  cachedClient = null;
+  cachedClientKey = null;
+}
+
 module.exports = {
   getSettings,
   saveSettings,
@@ -398,5 +430,7 @@ module.exports = {
   deleteTemplate,
   setActiveTemplate,
   saveFedexSettings,
-  isFedexConfigured
+  isFedexConfigured,
+  restoreSettings
 };
+

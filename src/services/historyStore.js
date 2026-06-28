@@ -100,10 +100,45 @@ function clearHistory() {
   saveHistory([]);
 }
 
+function restoreHistory(historyData, exportFiles) {
+  if (!Array.isArray(historyData)) {
+    throw new Error('Storico non valido nel file di backup.');
+  }
+
+  ensureDirs();
+
+  // Clear current exports first if any
+  try {
+    const files = fs.readdirSync(EXPORTS_DIR);
+    for (const file of files) {
+      fs.unlinkSync(path.join(EXPORTS_DIR, file));
+    }
+  } catch (err) {
+    console.error('Error clearing exports directory during restore:', err.message);
+  }
+
+  // Restore files
+  if (exportFiles) {
+    for (const [fileName, base64Content] of Object.entries(exportFiles)) {
+      const safeName = path.basename(fileName);
+      const filePath = path.join(EXPORTS_DIR, safeName);
+      try {
+        fs.writeFileSync(filePath, Buffer.from(base64Content, 'base64'));
+      } catch (err) {
+        console.error(`Error restoring file ${fileName}:`, err.message);
+      }
+    }
+  }
+
+  saveHistory(historyData);
+}
+
 module.exports = {
   getHistory,
   addEntry,
   deleteEntry,
   clearHistory,
-  EXPORTS_DIR
+  EXPORTS_DIR,
+  restoreHistory
 };
+

@@ -35,6 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const fedexConfigEnv = document.getElementById('fedex-config-env');
   const fedexConfigAccount = document.getElementById('fedex-config-account');
 
+  // Backup & Restore DOM Elements
+  const backupDropZone = document.getElementById('backup-drop-zone');
+  const backupFileInput = document.getElementById('backup-file-input');
+  const btnRestoreBackup = document.getElementById('btn-restore-backup');
+  const dropZoneText = document.getElementById('drop-zone-text');
+  const dropZoneIcon = document.getElementById('drop-zone-icon');
+
+  let selectedBackupData = null;
+
   // Load current settings on page load
   loadCurrentSettings();
 
@@ -47,6 +56,114 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (fedexTestBtn) fedexTestBtn.addEventListener('click', testFedexConnection);
   if (fedexSettingsForm) fedexSettingsForm.addEventListener('submit', saveFedexSettings);
+
+  // Backup & Restore Event Listeners
+  if (backupDropZone && backupFileInput && btnRestoreBackup) {
+    backupDropZone.addEventListener('click', () => backupFileInput.click());
+    
+    backupFileInput.addEventListener('change', handleFileSelect);
+    
+    // Drag and Drop
+    backupDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      backupDropZone.classList.add('dragover');
+    });
+    
+    backupDropZone.addEventListener('dragleave', () => {
+      backupDropZone.classList.remove('dragover');
+    });
+    
+    backupDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      backupDropZone.classList.remove('dragover');
+      
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        backupFileInput.files = files;
+        handleFileSelect();
+      }
+    });
+
+    btnRestoreBackup.addEventListener('click', triggerRestore);
+  }
+
+  // Tab Switcher DOM Elements
+  const tabButtons = document.querySelectorAll('.settings-nav-item');
+  const tabPanels = document.querySelectorAll('.settings-panel');
+
+  // Tab switcher logic
+  function switchTab(tabId) {
+    if (!tabId) return;
+    
+    // Deactivate all tabs and panels
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+    tabPanels.forEach(panel => panel.classList.remove('active'));
+
+    // Activate the selected tab and panel
+    const targetBtn = document.querySelector(`.settings-nav-item[data-tab="${tabId}"]`);
+    const targetPanel = document.getElementById(`panel-${tabId}`);
+
+    if (targetBtn && targetPanel) {
+      targetBtn.classList.add('active');
+      targetPanel.classList.add('active');
+      
+      // Update URL hash without breaking history or triggering hashchange loop
+      if (window.location.hash !== `#settings-${tabId}`) {
+        history.replaceState(null, null, `#settings-${tabId}`);
+      }
+    }
+  }
+
+  // Bind clicks on tab buttons
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabId = btn.getAttribute('data-tab');
+      switchTab(tabId);
+    });
+  });
+
+  // Handle URL hash on load
+  function initTabFromHash() {
+    const hash = window.location.hash;
+    if (hash.startsWith('#settings-')) {
+      const tabId = hash.replace('#settings-', '');
+      const validTabs = ['api', 'states', 'backup'];
+      if (validTabs.includes(tabId)) {
+        switchTab(tabId);
+        return;
+      }
+    }
+    const rawHash = hash.substring(1);
+    const validTabs = ['api', 'states', 'backup'];
+    if (rawHash && validTabs.includes(rawHash)) {
+      switchTab(rawHash);
+      return;
+    }
+    switchTab('api');
+  }
+
+  // Bind hash change event
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#settings-')) {
+      const tabId = hash.replace('#settings-', '');
+      const validTabs = ['api', 'states', 'backup'];
+      if (validTabs.includes(tabId)) {
+        switchTab(tabId);
+      }
+    } else {
+      const rawHash = hash.substring(1);
+      const validTabs = ['api', 'states', 'backup'];
+      if (rawHash && validTabs.includes(rawHash)) {
+        switchTab(rawHash);
+      }
+    }
+  });
+
+  // Initialize tabs
+  initTabFromHash();
+
+
 
   // Load and display current PrestaShop configuration
   async function loadCurrentSettings() {
@@ -524,4 +641,111 @@ document.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
     }
   }
+
+  // Backup file selection handler
+  function handleFileSelect() {
+    const file = backupFileInput.files[0];
+    if (!file) return;
+
+    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+      showToast('File non valido', 'Seleziona un file JSON valido.', 'error');
+      resetDropZone();
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.settings || !data.history) {
+          throw new Error('Struttura del backup non valida. Campi obbligatori mancanti.');
+        }
+        
+        selectedBackupData = data;
+        
+        // Show file is selected in UI
+        backupDropZone.classList.add('file-selected');
+        dropZoneText.textContent = `File caricato: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        
+        // Update Icon to check-circle
+        const currentIcon = document.getElementById('drop-zone-icon');
+        if (currentIcon) {
+          const newIcon = document.createElement('i');
+          newIcon.setAttribute('data-lucide', 'check-circle');
+          newIcon.setAttribute('id', 'drop-zone-icon');
+          currentIcon.replaceWith(newIcon);
+          lucide.createIcons();
+        }
+
+        btnRestoreBackup.disabled = false;
+        showToast('Backup validato', 'File di backup pronto per il ripristino.', 'success');
+      } catch (err) {
+        showToast('Errore di lettura', `Impossibile analizzare il file: ${err.message}`, 'error');
+        resetDropZone();
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // Reset the file drop zone
+  function resetDropZone() {
+    selectedBackupData = null;
+    backupFileInput.value = '';
+    btnRestoreBackup.disabled = true;
+    backupDropZone.classList.remove('file-selected');
+    dropZoneText.textContent = 'Trascina qui il file di backup o clicca per sfogliare';
+    
+    // Replace Icon with file-json
+    const currentIcon = document.getElementById('drop-zone-icon');
+    if (currentIcon) {
+      const newIcon = document.createElement('i');
+      newIcon.setAttribute('data-lucide', 'file-json');
+      newIcon.setAttribute('id', 'drop-zone-icon');
+      currentIcon.replaceWith(newIcon);
+      lucide.createIcons();
+    }
+  }
+
+  // Trigger restore API call
+  async function triggerRestore() {
+    if (!selectedBackupData) return;
+
+    const confirmRestore = confirm("Sei sicuro di voler procedere con il ripristino? Questa operazione sovrascriverà irrevocabilmente tutte le impostazioni e lo storico corrente.");
+    if (!confirmRestore) return;
+
+    btnRestoreBackup.disabled = true;
+    const originalContent = btnRestoreBackup.innerHTML;
+    btnRestoreBackup.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Ripristino in corso...';
+
+    try {
+      const response = await fetch('/api/settings/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(selectedBackupData)
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        showToast('Ripristino Completato', 'Tutti i dati e lo storico sono stati ripristinati correttamente!', 'success');
+        resetDropZone();
+        // Reload all current configurations on the settings page
+        await loadCurrentSettings();
+      } else {
+        showToast('Errore durante il ripristino', result.error || 'Errore sconosciuto durante il ripristino.', 'error');
+        btnRestoreBackup.disabled = false;
+      }
+    } catch (e) {
+      showToast('Errore di rete', 'Impossibile connettersi al server per eseguire il ripristino.', 'error');
+      btnRestoreBackup.disabled = false;
+    } finally {
+      btnRestoreBackup.innerHTML = originalContent;
+      lucide.createIcons();
+    }
+  }
+
+  // Export functions to global scope for app.js integration
+  window.switchTab = switchTab;
+  window.loadCurrentSettings = loadCurrentSettings;
 });
+

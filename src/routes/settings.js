@@ -345,4 +345,82 @@ router.post('/fedex/test', async (req, res) => {
   }
 });
 
+// GET /api/settings/backup - Export backup file
+router.get('/backup', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const historyStore = require('../services/historyStore');
+
+    // 1. Get settings
+    const settings = settingsStore.getSettings();
+
+    // 2. Get history
+    const history = historyStore.getHistory();
+
+    // 3. Get export files as base64
+    const exportsDir = historyStore.EXPORTS_DIR;
+    const exportFiles = {};
+    if (fs.existsSync(exportsDir)) {
+      const files = fs.readdirSync(exportsDir);
+      for (const file of files) {
+        const filePath = path.join(exportsDir, file);
+        if (fs.statSync(filePath).isFile()) {
+          const content = fs.readFileSync(filePath);
+          exportFiles[file] = content.toString('base64');
+        }
+      }
+    }
+
+    const backupData = {
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      settings,
+      history,
+      exports: exportFiles
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="backup_fedex_link_${new Date().toISOString().slice(0, 10)}.json"`);
+    res.send(JSON.stringify(backupData, null, 2));
+  } catch (error) {
+    console.error('Error generating backup:', error);
+    res.status(500).json({ error: 'Errore durante la generazione del backup.' });
+  }
+});
+
+// POST /api/settings/restore - Restore backup file
+router.post('/restore', async (req, res) => {
+  try {
+    const backupData = req.body;
+    if (!backupData || !backupData.settings || !backupData.history) {
+      return res.status(400).json({ error: 'Formato del file di backup non valido.' });
+    }
+
+    const historyStore = require('../services/historyStore');
+
+    // 1. Restore settings
+    settingsStore.restoreSettings(backupData.settings);
+
+    // 2. Restore history and physical files
+    historyStore.restoreHistory(backupData.history, backupData.exports || {});
+
+    // Reset order states cache in case new shop has different states
+    try {
+      const ordersRouter = require('./orders');
+      if (ordersRouter && typeof ordersRouter.resetOrderStatesCache === 'function') {
+        ordersRouter.resetOrderStatesCache();
+      }
+    } catch (e) {
+      console.warn('Failed to reset order states cache after restore:', e.message);
+    }
+
+    res.json({ success: true, message: 'Backup ripristinato con successo!' });
+  } catch (error) {
+    console.error('Error restoring backup:', error);
+    res.status(500).json({ error: `Errore durante il ripristino: ${error.message}` });
+  }
+});
+
 module.exports = router;
+
