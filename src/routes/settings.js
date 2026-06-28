@@ -372,12 +372,20 @@ router.get('/backup', async (req, res) => {
       }
     }
 
+    // 4. Get personal-example-batch-upload.xlsx as base64
+    let personalTemplate = null;
+    const personalTemplatePath = path.join(__dirname, '../../personal-example-batch-upload.xlsx');
+    if (fs.existsSync(personalTemplatePath)) {
+      personalTemplate = fs.readFileSync(personalTemplatePath).toString('base64');
+    }
+
     const backupData = {
       version: '1.0',
       timestamp: new Date().toISOString(),
       settings,
       history,
-      exports: exportFiles
+      exports: exportFiles,
+      personalTemplate
     };
 
     res.setHeader('Content-Type', 'application/json');
@@ -398,12 +406,24 @@ router.post('/restore', async (req, res) => {
     }
 
     const historyStore = require('../services/historyStore');
+    const fs = require('fs');
+    const path = require('path');
 
     // 1. Restore settings
     settingsStore.restoreSettings(backupData.settings);
 
     // 2. Restore history and physical files
     historyStore.restoreHistory(backupData.history, backupData.exports || {});
+
+    // 3. Restore personal-example-batch-upload.xlsx if present
+    if (backupData.personalTemplate) {
+      const personalTemplatePath = path.join(__dirname, '../../personal-example-batch-upload.xlsx');
+      try {
+        fs.writeFileSync(personalTemplatePath, Buffer.from(backupData.personalTemplate, 'base64'));
+      } catch (err) {
+        console.error('Error restoring personal Excel template:', err.message);
+      }
+    }
 
     // Reset order states cache in case new shop has different states
     try {
