@@ -393,6 +393,76 @@ function restoreSettings(settingsData) {
     throw new Error('Formato delle impostazioni di backup non valido.');
   }
 
+  const config = require('../config');
+
+  // 1. Restore shipment templates (with backwards compatibility for older settings.defaults format)
+  let shipmentTemplates = settingsData.shipmentTemplates || [];
+  let activeShipmentTemplateId = settingsData.activeShipmentTemplateId || '';
+
+  if (shipmentTemplates.length === 0) {
+    if (settingsData.defaults && (settingsData.defaults.packageWeight || settingsData.defaults.serviceType)) {
+      shipmentTemplates = [{
+        id: 't_default',
+        name: 'Default Spedizione',
+        weight: Number(settingsData.defaults.packageWeight) || 70,
+        length: Number(settingsData.defaults.length) || 80,
+        width: Number(settingsData.defaults.width) || 60,
+        height: Number(settingsData.defaults.height) || 100,
+        service: settingsData.defaults.serviceType || 'FEDEX_REGIONAL_ECONOMY_FREIGHT',
+        packageType: settingsData.defaults.packageType || 'YOUR_PACKAGING'
+      }];
+      activeShipmentTemplateId = 't_default';
+    } else {
+      shipmentTemplates = [{
+        id: 't_default',
+        name: 'Default Spedizione',
+        weight: Number(config.package.weight) || 70,
+        length: Number(config.package.length) || 80,
+        width: Number(config.package.width) || 60,
+        height: Number(config.package.height) || 100,
+        service: config.package.service || 'FEDEX_REGIONAL_ECONOMY_FREIGHT',
+        packageType: config.package.packageType || 'YOUR_PACKAGING'
+      }];
+      activeShipmentTemplateId = 't_default';
+    }
+  }
+
+  // 2. Restore shipper templates (with backwards compatibility for older settings.shipper format)
+  let shipperTemplates = settingsData.shipperTemplates || [];
+  let activeShipperTemplateId = settingsData.activeShipperTemplateId || '';
+
+  if (shipperTemplates.length === 0) {
+    if (settingsData.shipper && (settingsData.shipper.name || settingsData.shipper.address1)) {
+      shipperTemplates = [{
+        id: 's_default',
+        name: 'Default Mittente',
+        nameVal: settingsData.shipper.name || '',
+        company: settingsData.shipper.company || '',
+        address1: settingsData.shipper.address1 || '',
+        city: settingsData.shipper.city || '',
+        state: settingsData.shipper.state || '',
+        zip: settingsData.shipper.zip || '',
+        country: settingsData.shipper.country || '',
+        phone: settingsData.shipper.phone || ''
+      }];
+      activeShipperTemplateId = 's_default';
+    } else {
+      shipperTemplates = [{
+        id: 's_default',
+        name: 'Default Mittente',
+        nameVal: config.shipper.name || '',
+        company: config.shipper.company || '',
+        address1: config.shipper.address1 || '',
+        city: config.shipper.city || '',
+        state: config.shipper.state || '',
+        zip: config.shipper.zip || '',
+        country: config.shipper.country || '',
+        phone: config.shipper.phone || ''
+      }];
+      activeShipperTemplateId = 's_default';
+    }
+  }
+
   // Create clean settings object
   const settings = {
     prestashop: {
@@ -406,10 +476,10 @@ function restoreSettings(settingsData) {
       accountNumber: settingsData.fedex.accountNumber || '',
       useSandbox: settingsData.fedex.useSandbox !== undefined ? !!settingsData.fedex.useSandbox : true
     },
-    shipmentTemplates: settingsData.shipmentTemplates || [],
-    activeShipmentTemplateId: settingsData.activeShipmentTemplateId || '',
-    shipperTemplates: settingsData.shipperTemplates || [],
-    activeShipperTemplateId: settingsData.activeShipperTemplateId || ''
+    shipmentTemplates,
+    activeShipmentTemplateId,
+    shipperTemplates,
+    activeShipperTemplateId
   };
 
   persistSettings(settings);
