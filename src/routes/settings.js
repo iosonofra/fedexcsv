@@ -192,10 +192,28 @@ router.get('/templates', (req, res) => {
       shipper: {
         templates: settings.shipperTemplates || [],
         activeId: settings.activeShipperTemplateId || ''
-      }
+      },
+      confirmTemplatesBeforeExport: !!settings.confirmTemplatesBeforeExport
     });
   } catch (error) {
     console.error('Error fetching templates:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/settings/confirm-templates — save confirm-templates setting
+router.post('/confirm-templates', (req, res) => {
+  try {
+    const { confirmTemplatesBeforeExport } = req.body;
+    if (confirmTemplatesBeforeExport === undefined) {
+      return res.status(400).json({ error: 'Il parametro confirmTemplatesBeforeExport è obbligatorio.' });
+    }
+    const current = settingsStore.getSettings();
+    current.confirmTemplatesBeforeExport = !!confirmTemplatesBeforeExport;
+    settingsStore.persistSettings(current);
+    res.json({ success: true, message: 'Impostazione salvata correttamente.' });
+  } catch (error) {
+    console.error('Error saving confirm-templates setting:', error);
     res.status(500).json({ error: error.message });
   }
 });

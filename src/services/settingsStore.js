@@ -34,7 +34,8 @@ function getSettings() {
     shipperTemplates: [],
     activeShipperTemplateId: '',
     shipper: {},
-    defaults: {}
+    defaults: {},
+    confirmTemplatesBeforeExport: false
   };
 
   let needsSave = false;
@@ -48,6 +49,11 @@ function getSettings() {
     } catch (err) {
       console.error('Error reading settings file:', err.message);
     }
+  }
+
+  // Load confirmTemplatesBeforeExport setting
+  if (fileData.confirmTemplatesBeforeExport !== undefined) {
+    settings.confirmTemplatesBeforeExport = !!fileData.confirmTemplatesBeforeExport;
   }
 
   // 2. Load PrestaShop settings
@@ -176,7 +182,8 @@ function persistSettings(settings) {
     shipmentTemplates: settings.shipmentTemplates,
     activeShipmentTemplateId: settings.activeShipmentTemplateId,
     shipperTemplates: settings.shipperTemplates,
-    activeShipperTemplateId: settings.activeShipperTemplateId
+    activeShipperTemplateId: settings.activeShipperTemplateId,
+    confirmTemplatesBeforeExport: settings.confirmTemplatesBeforeExport
   };
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
   cachedSettings = null; // Invalidate cache
@@ -479,7 +486,8 @@ function restoreSettings(settingsData) {
     shipmentTemplates,
     activeShipmentTemplateId,
     shipperTemplates,
-    activeShipperTemplateId
+    activeShipperTemplateId,
+    confirmTemplatesBeforeExport: !!settingsData.confirmTemplatesBeforeExport
   };
 
   persistSettings(settings);
@@ -501,6 +509,7 @@ module.exports = {
   setActiveTemplate,
   saveFedexSettings,
   isFedexConfigured,
-  restoreSettings
+  restoreSettings,
+  persistSettings
 };
 

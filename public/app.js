@@ -31,6 +31,34 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedOrders = new Map();
   let activePollingInterval = null; // Guard contro doppio import tracking
 
+  // Nomi amichevoli dei servizi FedEx
+  const serviceFriendlyNames = {
+    'FEDEX_PRIORITY_FREIGHT': 'FedEx® Priority Freight',
+    'FEDEX_REGIONAL_ECONOMY': 'FedEx® Regional Economy',
+    'INTERNATIONAL_FIRST': 'FedEx International First®',
+    'FEDEX_INTERNATIONAL_PRIORITY': 'FedEx International Priority®',
+    'FEDEX_INTERNATIONAL_CONNECT_PLUS': 'FedEx International Connect Plus',
+    'PRIORITY_OVERNIGHT': 'FedEx Priority Overnight®',
+    'FEDEX_INTERNATIONAL_PRIORITY_EXPRESS': 'FedEx International Priority® Express',
+    'INTERNATIONAL_ECONOMY_FREIGHT': 'FedEx International Economy® Freight',
+    'INTERNATIONAL_PRIORITY_FREIGHT': 'FedEx International Priority® Freight',
+    'FEDEX_1_DAY_FREIGHT': 'FedEx 1Day® Freight',
+    'FEDEX_PRIORITY_EXPRESS_FREIGHT': 'FedEx® Priority Express Freight',
+    'INTERNATIONAL_ECONOMY': 'FedEx International Economy®',
+    'FIRST_OVERNIGHT': 'FedEx First Overnight®',
+    'FEDEX_REGIONAL_ECONOMY_FREIGHT': 'FedEx® Regional Economy Freight',
+    'FEDEX_PRIORITY': 'FedEx® Priority',
+    'FEDEX_PRIORITY_EXPRESS': 'FedEx® Priority Express',
+    'FEDEX_FIRST': 'FedEx® First',
+    'INTERNATIONAL_DEFERRED_FREIGHT': 'FedEx® International Deferred Freight',
+    'STANDARD_OVERNIGHT': 'Standard Overnight',
+    'FEDEX_GROUND': 'FedEx Ground®',
+    'GROUND_HOME_DELIVERY': 'FedEx Home Delivery®',
+    'SMART_POST': 'Fedex Ground® Economy',
+    'FEDEX_EXPRESS_SAVER': 'FedEx Express Saver®',
+    'FEDEX_ECONOMY_SELECT': 'FedEx Economy Select'
+  };
+
   // Indicatore di connessione dinamico
   function updateConnectionStatus(ok) {
     const dot = document.querySelector('.status-dot');
@@ -68,6 +96,11 @@ document.addEventListener('DOMContentLoaded', () => {
       await loadTemplates();
     } catch (e) {
       console.error('Errore nel caricamento dei template:', e);
+    }
+    try {
+      setupExportModal();
+    } catch (e) {
+      console.error('Errore durante il setup del modal di esportazione:', e);
     }
     try {
       handleSearch();
@@ -162,6 +195,12 @@ document.addEventListener('DOMContentLoaded', () => {
         populateTemplateSelect(shipmentTemplateSelect, shipmentTemplates, activeShipmentTemplateId);
         populateTemplateSelect(shipperTemplateSelect, shipperTemplates, activeShipperTemplateId);
         
+        // confirmTemplatesBeforeExport setting
+        const confirmTemplatesCheckbox = document.getElementById('confirm-templates-checkbox');
+        if (confirmTemplatesCheckbox) {
+          confirmTemplatesCheckbox.checked = !!data.confirmTemplatesBeforeExport;
+        }
+
         // Apply active values to inputs
         applyActiveShipmentTemplate();
         applyActiveShipperTemplate();
@@ -363,13 +402,37 @@ document.addEventListener('DOMContentLoaded', () => {
     saveShipperBtn.addEventListener('click', saveActiveShipperTemplate);
   }
 
+  // Confirm templates checkbox toggle listener
+  const confirmTemplatesCheckbox = document.getElementById('confirm-templates-checkbox');
+  if (confirmTemplatesCheckbox) {
+    confirmTemplatesCheckbox.addEventListener('change', async () => {
+      const enabled = confirmTemplatesCheckbox.checked;
+      try {
+        const response = await fetch('/api/settings/confirm-templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmTemplatesBeforeExport: enabled })
+        });
+        if (response.ok) {
+          showToast('Impostazione Aggiornata', enabled ? 'Conferma template all\'esportazione attivata.' : 'Conferma template all\'esportazione disattivata.', 'success');
+        } else {
+          showToast('Errore', 'Impossibile salvare l\'impostazione.', 'error');
+          confirmTemplatesCheckbox.checked = !enabled;
+        }
+      } catch (err) {
+        showToast('Errore', 'Impossibile connettersi al server.', 'error');
+        confirmTemplatesCheckbox.checked = !enabled;
+      }
+    });
+  }
+
   // Rename active templates
   async function renameActiveShipmentTemplate() {
     const active = shipmentTemplates.find(t => t.id === activeShipmentTemplateId);
     if (!active) return;
 
-    const newName = prompt('Inserisci il nuovo nome per il template di spedizione:', active.name);
-    if (!newName || !newName.trim()) return;
+    const newName = await showCustomPrompt('Rinomina Template Spedizione', 'Inserisci il nuovo nome per il template di spedizione:', active.name, 'scale');
+    if (!newName) return;
 
     const payload = {
       type: 'shipment',
@@ -400,8 +463,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const active = shipperTemplates.find(t => t.id === activeShipperTemplateId);
     if (!active) return;
 
-    const newName = prompt('Inserisci il nuovo nome per il template mittente:', active.name);
-    if (!newName || !newName.trim()) return;
+    const newName = await showCustomPrompt('Rinomina Template Mittente', 'Inserisci il nuovo nome per il template mittente:', active.name, 'user');
+    if (!newName) return;
 
     const payload = {
       type: 'shipper',
@@ -440,8 +503,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Create new template clones
   async function createShipmentTemplate() {
-    const name = prompt('Inserisci il nome del nuovo template di spedizione:');
-    if (!name || !name.trim()) return;
+    const name = await showCustomPrompt('Nuovo Template Spedizione', 'Inserisci il nome del nuovo template di spedizione:', '', 'scale');
+    if (!name) return;
 
     const id = 't_' + Date.now();
     const weight = parseFloat(document.getElementById('default-weight').value) || 70.0;
@@ -481,8 +544,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function createShipperTemplate() {
-    const name = prompt('Inserisci il nome del nuovo template mittente:');
-    if (!name || !name.trim()) return;
+    const name = await showCustomPrompt('Nuovo Template Mittente', 'Inserisci il nome del nuovo template mittente:', '', 'user');
+    if (!name) return;
 
     const id = 's_' + Date.now();
     const nameVal = shipperInputs.name.value.trim();
@@ -539,7 +602,8 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('Errore', 'Impossibile eliminare l\'ultimo template rimasto.', 'error');
       return;
     }
-    if (!confirm(`Sei sicuro di voler eliminare il template "${active.name}"?`)) return;
+    const confirmed = await showCustomConfirm('Elimina Template Spedizione', `Sei sicuro di voler eliminare il template di spedizione "${active.name}"? Questa azione è irreversibile.`, 'trash-2', true);
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/settings/templates?type=shipment&id=${active.id}`, {
@@ -564,7 +628,8 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('Errore', 'Impossibile eliminare l\'ultimo template rimasto.', 'error');
       return;
     }
-    if (!confirm(`Sei sicuro di voler eliminare il template mittente "${active.name}"?`)) return;
+    const confirmed = await showCustomConfirm('Elimina Template Mittente', `Sei sicuro di voler eliminare il template mittente "${active.name}"? Questa azione è irreversibile.`, 'trash-2', true);
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/settings/templates?type=shipper&id=${active.id}`, {
@@ -929,27 +994,141 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Esportazione Ordini in Excel per FedEx
-  async function handleExport() {
-    if (selectedOrders.size === 0) return;
+  // Setup dei listener per il modal di esportazione
+  function setupExportModal() {
+    const modal = document.getElementById('export-confirm-modal');
+    if (!modal) return;
 
+    const btnCancel = document.getElementById('btn-export-cancel');
+    const btnConfirm = document.getElementById('btn-export-confirm');
+    const shipperSelect = document.getElementById('export-shipper-select');
+    const shipmentSelect = document.getElementById('export-shipment-select');
+
+    if (btnCancel) {
+      btnCancel.addEventListener('click', () => {
+        modal.classList.add('hidden');
+      });
+    }
+
+    if (btnConfirm) {
+      btnConfirm.addEventListener('click', async () => {
+        const selectedShipperId = shipperSelect.value;
+        const selectedShipmentId = shipmentSelect.value;
+
+        const selectedShipper = shipperTemplates.find(t => t.id === selectedShipperId);
+        const selectedShipment = shipmentTemplates.find(t => t.id === selectedShipmentId);
+
+        if (!selectedShipper || !selectedShipment) {
+          showToast('Errore', 'Seleziona dei template validi.', 'error');
+          return;
+        }
+
+        modal.classList.add('hidden');
+
+        // Mappa i campi mittente nel formato richiesto dal payload
+        const shipper = {
+          name: selectedShipper.nameVal || '',
+          company: selectedShipper.company || '',
+          address1: selectedShipper.address1 || '',
+          city: selectedShipper.city || '',
+          zip: selectedShipper.zip || '',
+          country: selectedShipper.country || '',
+          phone: selectedShipper.phone || '',
+        };
+
+        const defaults = {
+          weight: selectedShipment.weight,
+          length: selectedShipment.length,
+          width: selectedShipment.width,
+          height: selectedShipment.height,
+          service: selectedShipment.service,
+          packageType: selectedShipment.packageType
+        };
+
+        await executeExport(defaults, shipper);
+      });
+    }
+
+    if (shipperSelect) {
+      shipperSelect.addEventListener('change', updateExportShipperDetails);
+    }
+
+    if (shipmentSelect) {
+      shipmentSelect.addEventListener('change', updateExportShipmentDetails);
+    }
+  }
+
+  // Apre il pop-up e pre-popola i dati
+  function openExportConfirmModal() {
+    const modal = document.getElementById('export-confirm-modal');
+    if (!modal) return;
+
+    const shipperSelect = document.getElementById('export-shipper-select');
+    const shipmentSelect = document.getElementById('export-shipment-select');
+
+    if (shipperSelect) {
+      populateTemplateSelect(shipperSelect, shipperTemplates, activeShipperTemplateId);
+      updateExportShipperDetails();
+    }
+
+    if (shipmentSelect) {
+      populateTemplateSelect(shipmentSelect, shipmentTemplates, activeShipmentTemplateId);
+      updateExportShipmentDetails();
+    }
+
+    modal.classList.remove('hidden');
+    lucide.createIcons();
+  }
+
+  // Aggiorna dinamicamente i dettagli del mittente selezionato nel pop-up
+  function updateExportShipperDetails() {
+    const selectEl = document.getElementById('export-shipper-select');
+    const detailsEl = document.getElementById('export-shipper-details');
+    if (!selectEl || !detailsEl) return;
+    const selectedId = selectEl.value;
+    const t = shipperTemplates.find(x => x.id === selectedId);
+    if (t) {
+      detailsEl.innerHTML = `
+        <strong>${escapeHTML(t.nameVal || t.company || '')}</strong><br>
+        ${escapeHTML(t.address1 || '')}<br>
+        ${escapeHTML(t.zip || '')} ${escapeHTML(t.city || '')} (${escapeHTML(t.state || '')}) - ${escapeHTML(t.country || '')}<br>
+        Tel: ${escapeHTML(t.phone || '')}
+      `;
+    } else {
+      detailsEl.innerHTML = 'Nessun dettaglio mittente disponibile.';
+    }
+  }
+
+  // Aggiorna dinamicamente i dettagli della spedizione selezionata nel pop-up
+  function updateExportShipmentDetails() {
+    const selectEl = document.getElementById('export-shipment-select');
+    const detailsEl = document.getElementById('export-shipment-details');
+    if (!selectEl || !detailsEl) return;
+    const selectedId = selectEl.value;
+    const t = shipmentTemplates.find(x => x.id === selectedId);
+    if (t) {
+      detailsEl.innerHTML = `
+        <strong>Servizio:</strong> ${escapeHTML(serviceFriendlyNames[t.service] || t.service || '')}<br>
+        <strong>Imballo:</strong> ${escapeHTML(t.packageType || '')}<br>
+        <strong>Peso:</strong> ${t.weight} kg | 
+        <strong>Misure:</strong> ${t.length}x${t.width}x${t.height} cm
+      `;
+    } else {
+      detailsEl.innerHTML = 'Nessun dettaglio spedizione disponibile.';
+    }
+  }
+
+  // Esegue la chiamata all'API di esportazione
+  async function executeExport(defaults, shipper) {
     const exportCount = selectedOrders.size;
     exportBtn.disabled = true;
     const originalContent = exportBtn.innerHTML;
     exportBtn.innerHTML = `<span class="spinner" style="width: 16px; height: 16px;"></span> Generazione file...`;
 
     try {
-      const weight = parseFloat(document.getElementById('default-weight').value) || 70.0;
-      const length = parseFloat(document.getElementById('default-length').value) || 80.0;
-      const width = parseFloat(document.getElementById('default-width').value) || 60.0;
-      const height = parseFloat(document.getElementById('default-height').value) || 100.0;
-      const service = document.getElementById('default-service').value;
-      const packageType = document.getElementById('default-package').value;
-      const shipper = getShipperData();
-
       const requestBody = {
         orderIds: Array.from(selectedOrders.keys()),
-        defaults: { weight, length, width, height, service, packageType },
+        defaults,
         shipper
       };
 
@@ -1008,6 +1187,32 @@ document.addEventListener('DOMContentLoaded', () => {
       exportBtn.disabled = false;
       exportBtn.innerHTML = originalContent;
     }
+  }
+
+  // Esportazione Ordini in Excel per FedEx (Wrapper condizionale)
+  async function handleExport() {
+    if (selectedOrders.size === 0) return;
+
+    // Se l'opzione di conferma è attiva, mostra il pop-up
+    const confirmTemplatesCheckbox = document.getElementById('confirm-templates-checkbox');
+    if (confirmTemplatesCheckbox && confirmTemplatesCheckbox.checked) {
+      openExportConfirmModal();
+      return;
+    }
+
+    // Altrimenti procedi con l'esportazione standard
+    const weight = parseFloat(document.getElementById('default-weight').value) || 70.0;
+    const length = parseFloat(document.getElementById('default-length').value) || 80.0;
+    const width = parseFloat(document.getElementById('default-width').value) || 60.0;
+    const height = parseFloat(document.getElementById('default-height').value) || 100.0;
+    const service = document.getElementById('default-service').value;
+    const packageType = document.getElementById('default-package').value;
+    const shipper = getShipperData();
+
+    await executeExport(
+      { weight, length, width, height, service, packageType },
+      shipper
+    );
   }
 
   // Sistema di Notifica Toast
@@ -1228,7 +1433,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentFileName = '';
 
   if (dropZone) {
-    dropZone.addEventListener('click', () => {
+    dropZone.addEventListener('click', (e) => {
+      if (e.target.id === 'file-input') return;
       const actualInput = document.getElementById('file-input');
       if (actualInput) actualInput.click();
     });
@@ -2288,6 +2494,163 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       showToast('Errore', 'Errore di rete: impossibile svuotare lo storico.', 'error');
     }
+  }
+
+  // Helper to dynamically set Lucide icon in container and re-initialize
+  function setLucideIcon(containerId, iconName, styleStr = '') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = `<i data-lucide="${iconName}" style="${styleStr}"></i>`;
+    lucide.createIcons();
+  }
+
+  // Graphical modal prompt with validation and dynamic icons
+  function showCustomPrompt(title, message, defaultValue = '', iconName = 'edit') {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('custom-prompt-modal');
+      const titleEl = document.getElementById('custom-prompt-title');
+      const messageEl = document.getElementById('custom-prompt-message');
+      const inputEl = document.getElementById('custom-prompt-input');
+      const errorEl = document.getElementById('custom-prompt-error');
+      const btnCancel = document.getElementById('custom-prompt-cancel');
+      const btnConfirm = document.getElementById('custom-prompt-confirm');
+
+      if (!modal || !titleEl || !messageEl || !inputEl || !btnCancel || !btnConfirm) {
+        resolve(prompt(message, defaultValue));
+        return;
+      }
+
+      titleEl.textContent = title;
+      messageEl.textContent = message;
+      inputEl.value = defaultValue;
+      if (errorEl) errorEl.style.display = 'none';
+
+      // Set dynamic icon based on template type
+      let iconColor = 'var(--fedex-purple-light)';
+      if (iconName === 'user') iconColor = 'var(--fedex-orange)';
+      setLucideIcon('custom-prompt-icon-container', iconName, `color: ${iconColor}; width: 20px; height: 20px;`);
+
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        inputEl.focus();
+        inputEl.select();
+      }, 50);
+
+      const cleanup = () => {
+        modal.classList.add('hidden');
+        btnCancel.removeEventListener('click', onCancel);
+        btnConfirm.removeEventListener('click', onConfirm);
+        inputEl.removeEventListener('keydown', onKeyDown);
+      };
+
+      function onCancel() {
+        cleanup();
+        resolve(null);
+      }
+
+      function onConfirm() {
+        const val = inputEl.value.trim();
+        if (!val) {
+          if (errorEl) {
+            errorEl.style.display = 'block';
+          }
+          inputEl.focus();
+          return;
+        }
+        cleanup();
+        resolve(val);
+      }
+
+      function onKeyDown(e) {
+        if (e.key === 'Enter') {
+          onConfirm();
+        } else if (e.key === 'Escape') {
+          onCancel();
+        }
+      }
+
+      btnCancel.addEventListener('click', onCancel);
+      btnConfirm.addEventListener('click', onConfirm);
+      inputEl.addEventListener('keydown', onKeyDown);
+    });
+  }
+
+  // Graphical modal confirm with danger/alert style support
+  function showCustomConfirm(title, message, iconName = 'alert-triangle', isDanger = false) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('custom-confirm-modal');
+      const titleEl = document.getElementById('custom-confirm-title');
+      const messageEl = document.getElementById('custom-confirm-message');
+      const iconContainer = document.getElementById('custom-confirm-icon-container');
+      const btnCancel = document.getElementById('custom-confirm-cancel');
+      const btnConfirm = document.getElementById('custom-confirm-confirm');
+
+      if (!modal || !titleEl || !messageEl || !btnCancel || !btnConfirm) {
+        resolve(confirm(message));
+        return;
+      }
+
+      titleEl.textContent = title;
+      messageEl.textContent = message;
+
+      // Set dynamic icon and danger background
+      if (iconContainer) {
+        if (isDanger) {
+          iconContainer.style.background = 'rgba(239, 68, 68, 0.1)';
+          setLucideIcon('custom-confirm-icon-container', iconName, 'color: var(--color-error); width: 20px; height: 20px;');
+        } else {
+          iconContainer.style.background = 'rgba(108, 35, 194, 0.1)';
+          setLucideIcon('custom-confirm-icon-container', iconName, 'color: var(--fedex-purple-light); width: 20px; height: 20px;');
+        }
+      }
+
+      // Stylize confirm button (red for danger, standard for normal)
+      if (btnConfirm) {
+        if (isDanger) {
+          btnConfirm.style.background = 'var(--color-error)';
+          btnConfirm.style.borderColor = 'var(--color-error)';
+          btnConfirm.style.color = '#fff';
+        } else {
+          btnConfirm.removeAttribute('style');
+          btnConfirm.style.flex = '1';
+          btnConfirm.style.justifyContent = 'center';
+          btnConfirm.style.height = '40px';
+          btnConfirm.style.margin = '0';
+        }
+      }
+
+      modal.classList.remove('hidden');
+      btnConfirm.focus();
+
+      const cleanup = () => {
+        modal.classList.add('hidden');
+        btnCancel.removeEventListener('click', onCancel);
+        btnConfirm.removeEventListener('click', onConfirm);
+        window.removeEventListener('keydown', onKeyDown);
+      };
+
+      function onCancel() {
+        cleanup();
+        resolve(false);
+      }
+
+      function onConfirm() {
+        cleanup();
+        resolve(true);
+      }
+
+      function onKeyDown(e) {
+        if (e.key === 'Enter') {
+          onConfirm();
+        } else if (e.key === 'Escape') {
+          onCancel();
+        }
+      }
+
+      btnCancel.addEventListener('click', onCancel);
+      btnConfirm.addEventListener('click', onConfirm);
+      window.addEventListener('keydown', onKeyDown);
+    });
   }
 
   // Utility Escaping HTML

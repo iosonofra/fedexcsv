@@ -470,7 +470,7 @@
               <h3>Storico Operazioni</h3>
               <p>Visualizza il registro delle esportazioni ed importazioni effettuate, consulta i dettagli ed elimina i vecchi log.</p>
             </div>
-            <button class="btn btn-secondary btn-sm" id="btn-clear-all-history" style="border-color: var(--color-error); color: var(--color-error);">
+            <button class="btn btn-outline-danger btn-sm" id="btn-clear-all-history">
               <i data-lucide="trash-2"></i> Pulisci Storico
             </button>
           </div>
@@ -527,6 +527,27 @@
 
       <!-- SEZIONE 4: Configurazione Spedizione (Valori Predefiniti e Mittente) -->
       <div id="section-shipment-settings" class="page-section hidden">
+        <!-- Card Opzioni Esportazione -->
+        <section class="dashboard-card" style="margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div class="brand-logo" style="width: 42px; height: 42px; background: rgba(108, 35, 194, 0.1); display: flex; align-items: center; justify-content: center; border-radius: var(--border-radius-sm); margin: 0;">
+                <i data-lucide="help-circle" style="color: var(--fedex-purple-light); width: 20px; height: 20px;"></i>
+              </div>
+              <div>
+                <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Conferma Template all'Esportazione</h3>
+                <p style="margin: 5px 0 0; font-size: 0.85rem; color: var(--text-secondary);">Chiedi conferma dei template per ogni esportazione di spedizioni.</p>
+              </div>
+            </div>
+            <div class="toggle-switch-container">
+              <label class="state-checkbox-item" style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px 16px; background: rgba(0,0,0,0.02); border: 1px solid var(--card-border); border-radius: var(--border-radius-sm); margin: 0;">
+                <input type="checkbox" id="confirm-templates-checkbox" style="cursor: pointer;">
+                <span style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary);">Chiedi conferma dei template prima di esportare</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
         <div class="settings-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px;">
           
           <!-- Card 1: Valori Predefiniti Spedizione -->
@@ -586,13 +607,24 @@
             <div class="form-group" style="margin-top: 16px;">
               <label for="default-service"><i data-lucide="shield-check"></i> Tipo Servizio Predefinito</label>
               <select id="default-service">
-                <option value="FEDEX_REGIONAL_ECONOMY_FREIGHT" selected>Regional Economy Freight</option>
-                <option value="FEDEX_REGIONAL_ECONOMY">Regional Economy</option>
-                <option value="FEDEX_INTERNATIONAL_PRIORITY">International Priority</option>
-                <option value="FEDEX_INTERNATIONAL_ECONOMY">International Economy</option>
-                <option value="INTERNATIONAL_FIRST">International First</option>
-                <option value="STANDARD_OVERNIGHT">Standard Overnight</option>
-                <option value="PRIORITY_OVERNIGHT">Priority Overnight</option>
+                <option value="FEDEX_PRIORITY_FREIGHT">FedEx® Priority Freight</option>
+                <option value="FEDEX_REGIONAL_ECONOMY">FedEx® Regional Economy</option>
+                <option value="INTERNATIONAL_FIRST">FedEx International First®</option>
+                <option value="FEDEX_INTERNATIONAL_PRIORITY">FedEx International Priority®</option>
+                <option value="FEDEX_INTERNATIONAL_CONNECT_PLUS">FedEx International Connect Plus</option>
+                <option value="PRIORITY_OVERNIGHT">FedEx Priority Overnight®</option>
+                <option value="FEDEX_INTERNATIONAL_PRIORITY_EXPRESS">FedEx International Priority® Express</option>
+                <option value="INTERNATIONAL_ECONOMY_FREIGHT">FedEx International Economy® Freight</option>
+                <option value="INTERNATIONAL_PRIORITY_FREIGHT">FedEx International Priority® Freight</option>
+                <option value="FEDEX_1_DAY_FREIGHT">FedEx 1Day® Freight</option>
+                <option value="FEDEX_PRIORITY_EXPRESS_FREIGHT">FedEx® Priority Express Freight</option>
+                <option value="INTERNATIONAL_ECONOMY">FedEx International Economy®</option>
+                <option value="FIRST_OVERNIGHT">FedEx First Overnight®</option>
+                <option value="FEDEX_REGIONAL_ECONOMY_FREIGHT" selected>FedEx® Regional Economy Freight</option>
+                <option value="FEDEX_PRIORITY">FedEx® Priority</option>
+                <option value="FEDEX_PRIORITY_EXPRESS">FedEx® Priority Express</option>
+                <option value="FEDEX_FIRST">FedEx® First</option>
+                <option value="INTERNATIONAL_DEFERRED_FREIGHT">FedEx® International Deferred Freight</option>
               </select>
             </div>
 
@@ -981,6 +1013,101 @@
       <button type="button" class="btn btn-primary" id="btn-setup-config" style="margin-top: 20px; width: 100%; justify-content: center; display: flex; align-items: center; gap: 8px;">
         <i data-lucide="settings"></i> Configura Impostazioni
       </button>
+    </div>
+  </div>
+
+  <!-- Modal di selezione template per Esportazione -->
+  <div class="setup-overlay hidden" id="export-confirm-modal">
+    <div class="setup-overlay-card" style="max-width: 520px; text-align: left; padding: 36px 32px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid var(--card-border); padding-bottom: 16px;">
+        <div class="brand-logo" style="width: 44px; height: 44px; background: rgba(108, 35, 194, 0.1); display: flex; align-items: center; justify-content: center; border-radius: var(--border-radius-sm); margin: 0; flex-shrink: 0;">
+          <i data-lucide="download" style="color: var(--fedex-purple-light); width: 20px; height: 20px;"></i>
+        </div>
+        <div>
+          <h2 style="margin: 0; font-size: 1.25rem; text-align: left; font-weight: 700; color: var(--text-primary);">Conferma Dati Esportazione</h2>
+          <p style="margin: 3px 0 0; font-size: 0.85rem; color: var(--text-secondary); text-align: left; line-height: 1.4;">Seleziona i template da utilizzare per questa spedizione batch.</p>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label for="export-shipper-select" style="font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-secondary);">
+          <i data-lucide="user" style="color: var(--fedex-orange); width: 15px; height: 15px;"></i> Dati Mittente (Shipper)
+        </label>
+        <select id="export-shipper-select" style="width: 100%; height: 42px; border-radius: var(--border-radius-sm); border: 1px solid #cbd5e1; padding: 0 12px; font-family: inherit; font-size: 0.9rem; background: #fff;"></select>
+        
+        <!-- Dettagli Mittente Selezionato -->
+        <div id="export-shipper-details" style="margin-top: 10px; padding: 12px; background: rgba(0,0,0,0.02); border-radius: var(--border-radius-sm); font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); border-left: 3px solid var(--fedex-orange); min-height: 70px;">
+          <!-- Caricato dinamicamente -->
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 24px;">
+        <label for="export-shipment-select" style="font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-secondary);">
+          <i data-lucide="scale" style="color: var(--fedex-purple-light); width: 15px; height: 15px;"></i> Valori Predefiniti Spedizione
+        </label>
+        <select id="export-shipment-select" style="width: 100%; height: 42px; border-radius: var(--border-radius-sm); border: 1px solid #cbd5e1; padding: 0 12px; font-family: inherit; font-size: 0.9rem; background: #fff;"></select>
+        
+        <!-- Dettagli Spedizione Selezionati -->
+        <div id="export-shipment-details" style="margin-top: 10px; padding: 12px; background: rgba(0,0,0,0.02); border-radius: var(--border-radius-sm); font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); border-left: 3px solid var(--fedex-purple-light); min-height: 75px;">
+          <!-- Caricato dinamicamente -->
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-top: 28px; border-top: 1px solid var(--card-border); padding-top: 20px;">
+        <button type="button" class="btn btn-secondary" id="btn-export-cancel" style="flex: 1; justify-content: center; height: 44px; margin: 0;">
+          Annulla
+        </button>
+        <button type="button" class="btn btn-accent" id="btn-export-confirm" style="flex: 1; justify-content: center; height: 44px; display: flex; align-items: center; gap: 8px; margin: 0;">
+          <i data-lucide="download"></i>
+          <span>Esporta File</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal di inserimento grafico (Custom Prompt) -->
+  <div class="setup-overlay hidden" id="custom-prompt-modal">
+    <div class="setup-overlay-card" style="max-width: 440px; text-align: left; padding: 28px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+        <div class="brand-logo" id="custom-prompt-icon-container" style="width: 40px; height: 40px; background: rgba(108, 35, 194, 0.1); display: flex; align-items: center; justify-content: center; border-radius: var(--border-radius-sm); margin: 0; flex-shrink: 0;">
+          <!-- Caricato dinamicamente -->
+        </div>
+        <div>
+          <h2 id="custom-prompt-title" style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-primary); text-align: left;">Titolo</h2>
+        </div>
+      </div>
+      
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label id="custom-prompt-message" style="font-weight: 500; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 8px; display: block;">Messaggio</label>
+        <input type="text" id="custom-prompt-input" style="width: 100%; height: 42px; border-radius: var(--border-radius-sm); border: 1px solid #cbd5e1; padding: 0 12px; font-family: inherit; font-size: 0.9rem; background: #fff; outline: none;">
+        <div id="custom-prompt-error" style="color: var(--color-error); font-size: 0.8rem; margin-top: 6px; font-weight: 600; display: none;">Il nome non può essere vuoto.</div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-top: 24px; border-top: 1px solid var(--card-border); padding-top: 16px;">
+        <button type="button" class="btn btn-secondary" id="custom-prompt-cancel" style="flex: 1; justify-content: center; height: 40px; margin: 0;">Annulla</button>
+        <button type="button" class="btn btn-accent" id="custom-prompt-confirm" style="flex: 1; justify-content: center; height: 40px; margin: 0;">Conferma</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal di conferma grafico (Custom Confirm) -->
+  <div class="setup-overlay hidden" id="custom-confirm-modal">
+    <div class="setup-overlay-card" style="max-width: 440px; text-align: left; padding: 28px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+        <div class="brand-logo" id="custom-confirm-icon-container" style="width: 40px; height: 40px; background: rgba(239, 68, 68, 0.1); display: flex; align-items: center; justify-content: center; border-radius: var(--border-radius-sm); margin: 0; flex-shrink: 0;">
+          <!-- Caricato dinamicamente -->
+        </div>
+        <div>
+          <h2 id="custom-confirm-title" style="margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--text-primary); text-align: left;">Conferma</h2>
+        </div>
+      </div>
+      
+      <p id="custom-confirm-message" style="font-size: 0.92rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px; text-align: left;"></p>
+
+      <div style="display: flex; gap: 12px; border-top: 1px solid var(--card-border); padding-top: 16px;">
+        <button type="button" class="btn btn-secondary" id="custom-confirm-cancel" style="flex: 1; justify-content: center; height: 40px; margin: 0;">Annulla</button>
+        <button type="button" class="btn btn-accent" id="custom-confirm-confirm" style="flex: 1; justify-content: center; height: 40px; margin: 0;">Conferma</button>
+      </div>
     </div>
   </div>
 
