@@ -52,13 +52,6 @@
           <span>Impostazioni API</span>
         </button>
       </div>
-
-      <div class="sidebar-footer">
-        <a href="/templates/fedex_example.xlsx" class="example-template-link" download>
-          <i data-lucide="file-spreadsheet"></i>
-          <span>Scarica modello Excel</span>
-        </a>
-      </div>
     </aside>
 
     <!-- Area Contenuto Principale -->
@@ -762,6 +755,10 @@
               <i data-lucide="database"></i>
               <span>Backup & Ripristino</span>
             </button>
+            <button class="settings-nav-item" data-tab="templates">
+              <i data-lucide="file-spreadsheet"></i>
+              <span>Modelli Excel</span>
+            </button>
           </nav>
 
           <!-- Pannelli di Contenuto -->
@@ -995,6 +992,33 @@
                 </div>
               </div>
             </div> <!-- Close panel-backup -->
+
+            <!-- Tab 4: Modelli di Importazione -->
+            <div class="settings-panel" id="panel-templates">
+              <div class="settings-card">
+                <div class="settings-card-title">
+                  <i data-lucide="file-spreadsheet" style="color: var(--color-success);"></i>
+                  Modello Excel FedEx Ship Manager
+                </div>
+                <p class="settings-card-desc">
+                  Scarica il file modello preconfigurato utilizzato per l'importazione batch delle spedizioni su FedEx Ship Manager o per il mapping dei dati di tracking.
+                </p>
+                <div style="margin-top: 24px; padding: 20px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.15); border-radius: var(--border-radius-md); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 44px; height: 44px; background: rgba(16, 185, 129, 0.15); border-radius: var(--border-radius-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                      <i data-lucide="file-spreadsheet" style="color: var(--color-success); width: 22px; height: 22px;"></i>
+                    </div>
+                    <div>
+                      <h4 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">fedex_example.xlsx</h4>
+                      <p style="margin: 3px 0 0; font-size: 0.8rem; color: var(--text-secondary);">Modello completo con codici servizio per FedEx Ship Manager</p>
+                    </div>
+                  </div>
+                  <a href="/templates/fedex_example.xlsx" class="btn btn-primary" download style="background: var(--color-success); border-color: var(--color-success); box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25); height: 42px; padding: 0 20px; text-decoration: none; font-size: 0.88rem; display: inline-flex; align-items: center; gap: 8px; color: #fff;">
+                    <i data-lucide="download" style="width: 16px; height: 16px;"></i> Scarica Modello
+                  </a>
+                </div>
+              </div>
+            </div> <!-- Close panel-templates -->
           </div> <!-- Close settings-content -->
         </div> <!-- Close settings-layout -->
       </div> <!-- Close section-settings -->

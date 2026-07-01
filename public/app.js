@@ -1408,7 +1408,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Also switch active settings tab if the hash specifies one (e.g. #settings-states)
       if (hash.startsWith('#settings-')) {
         const subHash = hash.replace('#settings-', '');
-        const validTabs = ['api', 'states', 'backup'];
+        const validTabs = ['api', 'states', 'backup', 'templates'];
         if (validTabs.includes(subHash) && typeof window.switchTab === 'function') {
           window.switchTab(subHash);
         }

@@ -15,6 +15,7 @@ app.use(express.json({ limit: '10mb' }));
 
 // Serve Static Frontend files
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/templates', express.static(path.join(__dirname, 'templates')));
 
 // API Routes
 app.use('/api/orders', ordersRouter);
