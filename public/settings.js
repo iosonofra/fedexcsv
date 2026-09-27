@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabPanels = document.querySelectorAll('.settings-panel');
 
   // Tab switcher logic
-  function switchTab(tabId) {
+  function switchTab(tabId, updateHash = true) {
     if (!tabId) return;
     
     // Deactivate all tabs and panels
@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
       targetPanel.classList.add('active');
       
       // Update URL hash without breaking history or triggering hashchange loop
-      if (window.location.hash !== `#settings-${tabId}`) {
+      if (updateHash && window.location.hash !== `#settings-${tabId}`) {
         history.replaceState(null, null, `#settings-${tabId}`);
       }
     }
@@ -118,44 +118,43 @@ document.addEventListener('DOMContentLoaded', () => {
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       const tabId = btn.getAttribute('data-tab');
-      switchTab(tabId);
+      switchTab(tabId, true);
     });
   });
 
   // Handle URL hash on load
   function initTabFromHash() {
     const hash = window.location.hash;
+    const validTabs = ['api', 'states', 'backup', 'templates'];
     if (hash.startsWith('#settings-')) {
       const tabId = hash.replace('#settings-', '');
-      const validTabs = ['api', 'states', 'backup'];
       if (validTabs.includes(tabId)) {
-        switchTab(tabId);
+        switchTab(tabId, false);
         return;
       }
     }
     const rawHash = hash.substring(1);
-    const validTabs = ['api', 'states', 'backup'];
     if (rawHash && validTabs.includes(rawHash)) {
-      switchTab(rawHash);
+      switchTab(rawHash, false);
       return;
     }
-    switchTab('api');
+    // Default to 'api' internal tab inside settings without altering window.location.hash
+    switchTab('api', false);
   }
 
   // Bind hash change event
   window.addEventListener('hashchange', () => {
     const hash = window.location.hash;
+    const validTabs = ['api', 'states', 'backup', 'templates'];
     if (hash.startsWith('#settings-')) {
       const tabId = hash.replace('#settings-', '');
-      const validTabs = ['api', 'states', 'backup'];
       if (validTabs.includes(tabId)) {
-        switchTab(tabId);
+        switchTab(tabId, false);
       }
     } else {
       const rawHash = hash.substring(1);
-      const validTabs = ['api', 'states', 'backup'];
       if (rawHash && validTabs.includes(rawHash)) {
-        switchTab(rawHash);
+        switchTab(rawHash, false);
       }
     }
   });

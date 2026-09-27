@@ -213,16 +213,16 @@
           <section class="dashboard-card" id="import-step-1">
           <div class="list-header" style="margin-bottom: 20px;">
             <div class="list-summary">
-              <h3>1. Carica File Risultati FedEx</h3>
-              <p>Carica il file Excel (.xlsx) o CSV contenente i codici di tracking generati da FedEx Ship Manager.</p>
+              <h3>1. Carica File Risultati Spedizioni</h3>
+              <p>Carica il file Excel (.xlsx) o CSV (.csv) di FedEx oppure il Collection Manifest in PDF (.pdf) di TNT.</p>
             </div>
           </div>
           
           <div class="upload-zone" id="drop-zone">
             <i data-lucide="file-up"></i>
             <h3>Trascina il file qui o clicca per sfogliare</h3>
-            <p>Supporta formati Excel (.xlsx) e CSV (.csv)</p>
-            <input type="file" id="file-input" class="hidden-file-input" accept=".xlsx,.csv">
+            <p>Supporta formati Excel (.xlsx), CSV (.csv) e Manifest TNT (.pdf)</p>
+            <input type="file" id="file-input" class="hidden-file-input" accept=".xlsx,.csv,.pdf">
           </div>
         </section>
 
@@ -231,18 +231,19 @@
           <div class="list-header" style="margin-bottom: 20px;">
             <div class="list-summary">
               <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                <h3 style="margin: 0;">2. Verifica Mappatura Colonne</h3>
+                <h3 style="margin: 0;" id="step-2-title">2. Verifica e Configurazione Import</h3>
                 <span class="badge badge-purple" id="detected-rows-badge" style="font-size: 0.85rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
                   <i data-lucide="file-spreadsheet" style="width: 14px; height: 14px;"></i>
                   <span>Rilevate <strong id="import-detected-rows">0</strong> righe di dati</span>
                 </span>
               </div>
-              <p style="margin-top: 8px; color: var(--text-secondary);">Controlla se le colonne del file sono state associate correttamente ai campi richiesti.</p>
+              <p style="margin-top: 8px; color: var(--text-secondary);" id="step-2-subtitle">Controlla i dati rilevati e configura le opzioni di corriere prima di applicare l'aggiornamento.</p>
             </div>
           </div>
 
           <div class="mapping-preview">
-            <div class="mapping-fields">
+            <!-- Mappatura colonne per Excel / CSV -->
+            <div class="mapping-fields" id="mapping-fields-excel">
               <div class="form-group">
                 <label for="map-reference-col"><i data-lucide="key"></i> Colonna Riferimento Ordine (PrestaShop Reference)</label>
                 <select id="map-reference-col"></select>
@@ -253,8 +254,76 @@
               </div>
             </div>
 
-            <div class="list-summary" style="margin-top: 24px; margin-bottom: 12px;">
-              <h4>Anteprima Dati (Prime 5 righe rilevate)</h4>
+            <!-- Scheda controllo coerenza Manifest TNT PDF (mostrata solo per PDF) -->
+            <div id="pdf-manifest-summary" class="hidden" style="margin-bottom: 20px; padding: 16px 20px; border-radius: var(--border-radius-sm); border: 1px solid var(--card-border); background: var(--bg-surface-secondary);">
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <i data-lucide="file-text" style="color: var(--fedex-orange); width: 22px; height: 22px;"></i>
+                  <div>
+                    <strong style="font-size: 0.95rem; color: var(--text-primary);">Manifest TNT Rilevato</strong>
+                    <p id="pdf-manifest-status-text" style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--text-secondary);"></p>
+                  </div>
+                </div>
+                <div id="pdf-manifest-badges" style="display: flex; gap: 8px;"></div>
+              </div>
+              <div id="pdf-manifest-errors" class="hidden" style="margin-top: 12px; padding: 10px 14px; background: rgba(239, 68, 68, 0.08); border-left: 4px solid var(--color-danger); border-radius: 4px; font-size: 0.85rem; color: var(--color-danger);"></div>
+            </div>
+
+            <!-- Sezione Opzioni Corriere e Sovrascrittura -->
+            <div class="carrier-options-card" style="background: var(--bg-surface-secondary); padding: 18px 20px; border-radius: var(--border-radius-sm); border: 1px solid var(--card-border); margin-bottom: 24px;">
+              <h4 style="margin: 0 0 14px 0; font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="truck" style="width: 18px; height: 18px; color: var(--fedex-purple-light);"></i>
+                <span>Corriere e Modalità di Aggiornamento</span>
+              </h4>
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                  <label for="file-carrier-select" style="font-size: 0.88rem; font-weight: 500; min-width: 150px;">Corriere da impostare:</label>
+                  <select id="file-carrier-select" style="flex: 1; min-width: 240px; max-width: 360px; height: 40px; padding: 6px 12px; border-radius: var(--border-radius-sm); border: 1px solid var(--card-border); background: #ffffff;">
+                    <option value="">Caricamento corrieri...</option>
+                  </select>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="file-change-carrier" style="cursor: pointer; width: 16px; height: 16px;">
+                    <label for="file-change-carrier" style="font-size: 0.88rem; cursor: pointer; user-select: none; font-weight: 500;">
+                      Aggiorna anche il corriere sulla spedizione
+                    </label>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.08);">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="file-show-inactive-carriers" style="cursor: pointer; width: 15px; height: 15px;" checked>
+                    <label for="file-show-inactive-carriers" style="font-size: 0.84rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                      Mostra anche corrieri non attivi (es. TNT, FedEx)
+                    </label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="file-remember-carrier" style="cursor: pointer; width: 15px; height: 15px;" checked>
+                    <label for="file-remember-carrier" style="font-size: 0.84rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                      Ricorda corriere selezionato nelle prossime sessioni
+                    </label>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                  <input type="checkbox" id="file-overwrite-tracking" style="cursor: pointer; width: 16px; height: 16px;">
+                  <label for="file-overwrite-tracking" style="font-size: 0.86rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                    Sovrascrivi i tracking diversi se già presenti sull'ordine
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="list-summary" style="margin-top: 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <h4 id="preview-heading-text" style="margin: 0;">Anteprima Dati Rilevati</h4>
+              <div id="file-selection-controls" style="display: flex; align-items: center; gap: 10px;">
+                <span class="badge badge-purple" id="file-selection-count-badge" style="font-size: 0.82rem; padding: 4px 10px;">
+                  <span id="file-selected-count">0</span> selezionate
+                </span>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-file-select-all" style="padding: 4px 10px; font-size: 0.8rem;">
+                  Seleziona tutte
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-file-deselect-all" style="padding: 4px 10px; font-size: 0.8rem;">
+                  Deseleziona tutte
+                </button>
+              </div>
             </div>
             
             <div class="preview-table-container">
@@ -380,6 +449,48 @@
               </table>
             </div>
 
+            <!-- Sezione Opzioni Corriere e Sovrascrittura per Sincronizzazione Diretta -->
+            <div class="carrier-options-card" style="background: var(--bg-surface-secondary); padding: 18px 20px; border-radius: var(--border-radius-sm); border: 1px solid var(--card-border); margin-bottom: 24px;">
+              <h4 style="margin: 0 0 14px 0; font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="truck" style="width: 18px; height: 18px; color: var(--fedex-purple-light);"></i>
+                <span>Corriere e Modalità di Aggiornamento</span>
+              </h4>
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                  <label for="direct-carrier-select" style="font-size: 0.88rem; font-weight: 500; min-width: 150px;">Corriere da impostare:</label>
+                  <select id="direct-carrier-select" style="flex: 1; min-width: 240px; max-width: 360px; height: 40px; padding: 6px 12px; border-radius: var(--border-radius-sm); border: 1px solid var(--card-border); background: #ffffff;">
+                    <option value="">Caricamento corrieri...</option>
+                  </select>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="direct-change-carrier" style="cursor: pointer; width: 16px; height: 16px;">
+                    <label for="direct-change-carrier" style="font-size: 0.88rem; cursor: pointer; user-select: none; font-weight: 500;">
+                      Aggiorna anche il corriere sulla spedizione
+                    </label>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding-top: 4px; border-top: 1px dashed rgba(0,0,0,0.08);">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="direct-show-inactive-carriers" style="cursor: pointer; width: 15px; height: 15px;" checked>
+                    <label for="direct-show-inactive-carriers" style="font-size: 0.84rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                      Mostra anche corrieri non attivi (es. TNT, FedEx)
+                    </label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="direct-remember-carrier" style="cursor: pointer; width: 15px; height: 15px;" checked>
+                    <label for="direct-remember-carrier" style="font-size: 0.84rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                      Ricorda corriere selezionato nelle prossime sessioni
+                    </label>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                  <input type="checkbox" id="direct-overwrite-tracking" style="cursor: pointer; width: 16px; height: 16px;">
+                  <label for="direct-overwrite-tracking" style="font-size: 0.86rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                    Sovrascrivi i tracking diversi se già presenti sull'ordine
+                  </label>
+                </div>
+              </div>
+            </div>
+
             <div id="direct-import-progress-container" class="progress-container hidden" style="margin-top: 20px; margin-bottom: 20px;">
               <div class="progress-header">
                 <span id="direct-import-progress-status">Importazione in corso...</span>
@@ -408,9 +519,14 @@
               <h3>3. Esito Importazione</h3>
               <p>Il caricamento dei codici di tracking è completato. Di seguito il dettaglio delle operazioni effettuate.</p>
             </div>
-            <button class="btn btn-primary" id="btn-reset-import">
-              <i data-lucide="refresh-cw"></i> Importa un altro file
-            </button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button class="btn btn-primary" id="btn-reset-import">
+                <i data-lucide="file-up"></i> Importa un altro file
+              </button>
+              <button class="btn btn-outline" id="btn-reset-direct">
+                <i data-lucide="refresh-cw"></i> Sincronizza da API FedEx
+              </button>
+            </div>
           </div>
 
           <div class="summary-cards">
@@ -490,6 +606,25 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Paginazione Storico Operazioni -->
+          <div id="history-pagination" class="pagination-container hidden" style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div class="pagination-info" style="font-size: 0.88rem; color: var(--text-secondary); display: flex; align-items: center; gap: 14px;">
+              <span id="history-pagination-summary">Mostrati <strong>1-10</strong> di <strong>0</strong> operazioni</span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <label for="history-page-size" style="font-size: 0.82rem; color: var(--text-muted);">Righe per pagina:</label>
+                <select id="history-page-size" style="padding: 4px 8px; font-size: 0.82rem; border-radius: var(--border-radius-sm); border: 1px solid var(--card-border); background: #ffffff; cursor: pointer;">
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </div>
+            </div>
+            <div class="pagination-nav" id="history-pagination-nav" style="display: flex; align-items: center; gap: 6px;">
+              <!-- Bottoni paginazione dinamici -->
+            </div>
           </div>
         </section>
 

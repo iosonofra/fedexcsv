@@ -98,6 +98,11 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Errore nel caricamento dei template:', e);
     }
     try {
+      await loadPrestashopCarriers();
+    } catch (e) {
+      console.error('Errore nel caricamento dei corrieri PrestaShop:', e);
+    }
+    try {
       setupExportModal();
     } catch (e) {
       console.error('Errore durante il setup del modal di esportazione:', e);
@@ -1308,45 +1313,127 @@ document.addEventListener('DOMContentLoaded', () => {
     mainHeaderTitle.textContent = 'Gestione Spedizioni PrestaShop';
     mainHeaderSubtitle.textContent = 'Seleziona gli ordini da dagimarket.com e compila l\'Excel per la spedizione batch FedEx';
     updateActionFooter();
-    history.replaceState(null, null, ' ');
+    if (window.location.hash && window.location.hash !== '#' && window.location.hash !== '#orders') {
+      history.replaceState(null, null, window.location.pathname + window.location.search);
+    }
   });
+
+  const brandEl = document.querySelector('.brand');
+  if (brandEl) {
+    brandEl.style.cursor = 'pointer';
+    brandEl.addEventListener('click', () => {
+      if (menuOrders) menuOrders.click();
+    });
+  }
 
   menuImportTracking.addEventListener('click', () => {
     deactivateAllTabs();
     menuImportTracking.classList.add('active');
     sectionImportTracking.classList.remove('hidden');
     mainHeaderTitle.textContent = 'Importa Tracking su PrestaShop';
-    mainHeaderSubtitle.textContent = 'Carica il file con i tracking di ritorno generati da FedEx per associarli in PrestaShop';
+    mainHeaderSubtitle.textContent = 'Carica il file con i tracking generati da FedEx o TNT per associarli in PrestaShop';
     history.replaceState(null, null, '#import-tracking');
     
+    loadPrestashopCarriers();
+
     // Default to Excel file upload tab when navigation menu is clicked
-    if (tabImportFile) tabImportFile.click();
+    showFileImportTab();
   });
 
   const tabImportFile = document.getElementById('tab-import-file');
   const tabImportDirect = document.getElementById('tab-import-direct');
   const panelImportFile = document.getElementById('panel-import-file');
   const panelImportDirect = document.getElementById('panel-import-direct');
+  const importStep1 = document.getElementById('import-step-1');
+  const importStep2 = document.getElementById('import-step-2');
+  const importStep3 = document.getElementById('import-step-3');
+  const directStep1 = document.getElementById('direct-step-1');
+  const directStep2 = document.getElementById('direct-step-2');
+  const btnResetImport = document.getElementById('btn-reset-import');
+  const btnResetDirect = document.getElementById('btn-reset-direct');
 
-  if (tabImportFile && tabImportDirect) {
-    tabImportFile.addEventListener('click', () => {
-      tabImportFile.classList.add('active');
-      tabImportDirect.classList.remove('active');
-      panelImportFile.classList.remove('hidden');
-      panelImportDirect.classList.add('hidden');
-      importStep3.classList.add('hidden');
-    });
+  function showFileImportTab(forceReset = false) {
+    if (tabImportFile) tabImportFile.classList.add('active');
+    if (tabImportDirect) tabImportDirect.classList.remove('active');
+    if (panelImportFile) panelImportFile.classList.remove('hidden');
+    if (panelImportDirect) panelImportDirect.classList.add('hidden');
 
-    tabImportDirect.addEventListener('click', () => {
-      tabImportDirect.classList.add('active');
-      tabImportFile.classList.remove('active');
-      panelImportDirect.classList.remove('hidden');
-      panelImportFile.classList.add('hidden');
-      importStep3.classList.add('hidden');
-      
-      // Clear previous direct sync states
+    const isStep3Visible = importStep3 && !importStep3.classList.contains('hidden');
+    const areBothStepsHidden = importStep1 && importStep2 && importStep1.classList.contains('hidden') && importStep2.classList.contains('hidden');
+
+    if (importStep3) importStep3.classList.add('hidden');
+
+    if (forceReset || isStep3Visible || areBothStepsHidden || (!currentFileData && !currentPdfRows)) {
+      if (importStep1) importStep1.classList.remove('hidden');
+      if (importStep2) importStep2.classList.add('hidden');
+      const importProgressContainer = document.getElementById('import-progress-container');
+      if (importProgressContainer) importProgressContainer.classList.add('hidden');
+      if (typeof resetImportStep1 === 'function') {
+        resetImportStep1();
+      }
+    }
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+      lucide.createIcons();
+    }
+  }
+
+  function showDirectSyncTab(forceReset = false) {
+    if (tabImportDirect) tabImportDirect.classList.add('active');
+    if (tabImportFile) tabImportFile.classList.remove('active');
+    if (panelImportDirect) panelImportDirect.classList.remove('hidden');
+    if (panelImportFile) panelImportFile.classList.add('hidden');
+
+    const isStep3Visible = importStep3 && !importStep3.classList.contains('hidden');
+    const areBothDirectStepsHidden = directStep1 && directStep2 && directStep1.classList.contains('hidden') && directStep2.classList.contains('hidden');
+
+    if (importStep3) importStep3.classList.add('hidden');
+
+    if (forceReset || isStep3Visible || areBothDirectStepsHidden) {
+      if (directStep1) directStep1.classList.remove('hidden');
+      if (directStep2) directStep2.classList.add('hidden');
+      const directPendingContainer = document.getElementById('direct-pending-container');
+      const directEmptyState = document.getElementById('direct-empty-state');
+      const directProgressContainer = document.getElementById('direct-progress-container');
+      const directImportProgressContainer = document.getElementById('direct-import-progress-container');
+      const directResultsTableBody = document.getElementById('direct-results-table-body');
+      const btnFindPendingSync = document.getElementById('btn-find-pending-sync');
+
       if (directPendingContainer) directPendingContainer.classList.add('hidden');
       if (directEmptyState) directEmptyState.classList.add('hidden');
+      if (directProgressContainer) directProgressContainer.classList.add('hidden');
+      if (directImportProgressContainer) directImportProgressContainer.classList.add('hidden');
+      if (directResultsTableBody) directResultsTableBody.innerHTML = '';
+      if (btnFindPendingSync) {
+        btnFindPendingSync.disabled = false;
+        btnFindPendingSync.innerHTML = '<i data-lucide="search"></i> Cerca Spedizioni da Associare';
+      }
+    }
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+      lucide.createIcons();
+    }
+  }
+
+  if (tabImportFile) {
+    tabImportFile.addEventListener('click', () => {
+      showFileImportTab();
+    });
+  }
+
+  if (tabImportDirect) {
+    tabImportDirect.addEventListener('click', () => {
+      showDirectSyncTab();
+    });
+  }
+
+  if (btnResetImport) {
+    btnResetImport.addEventListener('click', () => {
+      showFileImportTab(true);
+    });
+  }
+
+  if (btnResetDirect) {
+    btnResetDirect.addEventListener('click', () => {
+      showDirectSyncTab(true);
     });
   }
 
@@ -1410,7 +1497,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const subHash = hash.replace('#settings-', '');
         const validTabs = ['api', 'states', 'backup', 'templates'];
         if (validTabs.includes(subHash) && typeof window.switchTab === 'function') {
-          window.switchTab(subHash);
+          window.switchTab(subHash, false);
         }
       }
     } else if (hash === '#history') {
@@ -1419,10 +1506,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (menuShipmentSettings) menuShipmentSettings.click();
     } else if (hash === '#import-tracking') {
       if (menuImportTracking) menuImportTracking.click();
+    } else {
+      // Default / Homepage: Ordini PrestaShop
+      if (menuOrders) menuOrders.click();
     }
   }
 
-  setTimeout(initRoutingFromHash, 100);
+  // Handle URL hash on load and when hash/history changes
+  initRoutingFromHash();
+  window.addEventListener('hashchange', initRoutingFromHash);
+  window.addEventListener('popstate', initRoutingFromHash);
 
 
   // Gestione File Upload (Drag & Drop)
@@ -1465,12 +1558,195 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Stato Corrieri e Import
+  let availableCarriers = [];
+  let currentPdfRows = null;
+  let currentIsPdf = false;
+
+  // Cerca un corriere per parola chiave (es. "tnt" o "fedex")
+  function findCarrierByKeyword(keyword) {
+    if (!availableCarriers || availableCarriers.length === 0) return null;
+    const kw = keyword.toLowerCase().trim();
+    // 1. Cerca per nome esatto (es. "tnt" o "fedex")
+    let match = availableCarriers.find(c => c.name.toLowerCase().trim() === kw);
+    if (match) return match;
+    // 2. Cerca per inclusione parola (es. "TNT Express" o "FedEx Priority")
+    match = availableCarriers.find(c => c.name.toLowerCase().includes(kw));
+    return match || null;
+  }
+
+  // Popola o aggiorna i menu a tendina dei corrieri tenendo conto del filtro non attivi
+  function populateCarrierSelects() {
+    const fileShowInactive = document.getElementById('file-show-inactive-carriers');
+    const directShowInactive = document.getElementById('direct-show-inactive-carriers');
+    const showInactive = localStorage.getItem('show_inactive_carriers') !== 'false'; // default true
+
+    if (fileShowInactive) fileShowInactive.checked = showInactive;
+    if (directShowInactive) directShowInactive.checked = showInactive;
+
+    const fileCarrierSelect = document.getElementById('file-carrier-select');
+    const directCarrierSelect = document.getElementById('direct-carrier-select');
+
+    [fileCarrierSelect, directCarrierSelect].forEach(select => {
+      if (!select) return;
+      const prevVal = select.value;
+      select.innerHTML = '<option value="">-- Seleziona Corriere PrestaShop --</option>';
+
+      const filtered = showInactive ? availableCarriers : availableCarriers.filter(c => c.active);
+
+      filtered.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        const inactiveTag = c.active === false ? ' (Non attivo)' : '';
+        opt.textContent = `${c.name} (ID: ${c.id})${inactiveTag}`;
+        select.appendChild(opt);
+      });
+
+      if (prevVal && select.querySelector(`option[value="${prevVal}"]`)) {
+        select.value = prevVal;
+      }
+    });
+  }
+
+  async function loadPrestashopCarriers() {
+    try {
+      const response = await fetch('/api/tracking/carriers');
+      if (!response.ok) return;
+      availableCarriers = await response.json();
+      populateCarrierSelects();
+    } catch (e) {
+      console.warn('Errore nel caricamento corrieri PrestaShop:', e);
+    }
+  }
+
+  // Sincronizzazione controlli corrieri e preferenze
+  const fileCarrierSelect = document.getElementById('file-carrier-select');
+  const fileChangeCarrier = document.getElementById('file-change-carrier');
+  const fileOverwriteTracking = document.getElementById('file-overwrite-tracking');
+  const fileShowInactive = document.getElementById('file-show-inactive-carriers');
+  const fileRememberCarrier = document.getElementById('file-remember-carrier');
+
+  const directCarrierSelect = document.getElementById('direct-carrier-select');
+  const directChangeCarrier = document.getElementById('direct-change-carrier');
+  const directOverwriteTracking = document.getElementById('direct-overwrite-tracking');
+  const directShowInactive = document.getElementById('direct-show-inactive-carriers');
+  const directRememberCarrier = document.getElementById('direct-remember-carrier');
+
+  // Gestione opzione "Mostra anche corrieri non attivi"
+  function handleToggleShowInactive(checked) {
+    localStorage.setItem('show_inactive_carriers', checked ? 'true' : 'false');
+    if (fileShowInactive) fileShowInactive.checked = checked;
+    if (directShowInactive) directShowInactive.checked = checked;
+    populateCarrierSelects();
+  }
+
+  if (fileShowInactive) {
+    fileShowInactive.addEventListener('change', (e) => handleToggleShowInactive(e.target.checked));
+  }
+  if (directShowInactive) {
+    directShowInactive.addEventListener('change', (e) => handleToggleShowInactive(e.target.checked));
+  }
+
+  // Gestione opzione "Ricorda corriere selezionato"
+  const rememberPref = localStorage.getItem('pref_remember_carrier') !== 'false'; // default true
+  if (fileRememberCarrier) fileRememberCarrier.checked = rememberPref;
+  if (directRememberCarrier) directRememberCarrier.checked = rememberPref;
+
+  if (fileRememberCarrier) {
+    fileRememberCarrier.addEventListener('change', (e) => {
+      const checked = e.target.checked;
+      localStorage.setItem('pref_remember_carrier', checked ? 'true' : 'false');
+      if (directRememberCarrier) directRememberCarrier.checked = checked;
+    });
+  }
+  if (directRememberCarrier) {
+    directRememberCarrier.addEventListener('change', (e) => {
+      const checked = e.target.checked;
+      localStorage.setItem('pref_remember_carrier', checked ? 'true' : 'false');
+      if (fileRememberCarrier) fileRememberCarrier.checked = checked;
+    });
+  }
+
+  if (fileCarrierSelect) {
+    fileCarrierSelect.addEventListener('change', () => {
+      const val = fileCarrierSelect.value;
+      const shouldRemember = !fileRememberCarrier || fileRememberCarrier.checked;
+      if (shouldRemember && val) {
+        if (currentIsPdf) {
+          localStorage.setItem('preferred_carrier_tnt', val);
+        } else {
+          localStorage.setItem('preferred_carrier_fedex', val);
+        }
+        localStorage.setItem('preferred_prestashop_carrier_id', val);
+      }
+      if (directCarrierSelect && directCarrierSelect.value !== val) {
+        directCarrierSelect.value = val;
+      }
+    });
+  }
+
+  if (directCarrierSelect) {
+    directCarrierSelect.addEventListener('change', () => {
+      const val = directCarrierSelect.value;
+      const shouldRemember = !directRememberCarrier || directRememberCarrier.checked;
+      if (shouldRemember && val) {
+        localStorage.setItem('preferred_carrier_fedex', val);
+        localStorage.setItem('preferred_prestashop_carrier_id', val);
+      }
+      if (fileCarrierSelect && fileCarrierSelect.value !== val) {
+        fileCarrierSelect.value = val;
+      }
+    });
+  }
+
+  if (fileChangeCarrier) {
+    const saved = localStorage.getItem('pref_change_carrier');
+    if (saved !== null) fileChangeCarrier.checked = (saved === 'true');
+    fileChangeCarrier.addEventListener('change', () => {
+      localStorage.setItem('pref_change_carrier', fileChangeCarrier.checked);
+      if (currentIsPdf) {
+        localStorage.setItem('pref_change_carrier_tnt', fileChangeCarrier.checked ? 'true' : 'false');
+      } else {
+        localStorage.setItem('pref_change_carrier_fedex', fileChangeCarrier.checked ? 'true' : 'false');
+      }
+      if (directChangeCarrier) directChangeCarrier.checked = fileChangeCarrier.checked;
+    });
+  }
+
+  if (directChangeCarrier) {
+    const saved = localStorage.getItem('pref_change_carrier');
+    if (saved !== null) directChangeCarrier.checked = (saved === 'true');
+    directChangeCarrier.addEventListener('change', () => {
+      localStorage.setItem('pref_change_carrier', directChangeCarrier.checked);
+      localStorage.setItem('pref_change_carrier_fedex', directChangeCarrier.checked ? 'true' : 'false');
+      if (fileChangeCarrier) fileChangeCarrier.checked = directChangeCarrier.checked;
+    });
+  }
+
+  if (fileOverwriteTracking) {
+    const saved = localStorage.getItem('pref_overwrite_tracking');
+    if (saved !== null) fileOverwriteTracking.checked = (saved === 'true');
+    fileOverwriteTracking.addEventListener('change', () => {
+      localStorage.setItem('pref_overwrite_tracking', fileOverwriteTracking.checked);
+      if (directOverwriteTracking) directOverwriteTracking.checked = fileOverwriteTracking.checked;
+    });
+  }
+
+  if (directOverwriteTracking) {
+    const saved = localStorage.getItem('pref_overwrite_tracking');
+    if (saved !== null) directOverwriteTracking.checked = (saved === 'true');
+    directOverwriteTracking.addEventListener('change', () => {
+      localStorage.setItem('pref_overwrite_tracking', directOverwriteTracking.checked);
+      if (fileOverwriteTracking) fileOverwriteTracking.checked = directOverwriteTracking.checked;
+    });
+  }
+
   async function handleFileSelected(file) {
-    const validExtensions = ['xlsx', 'csv'];
+    const validExtensions = ['xlsx', 'csv', 'pdf'];
     const fileExt = file.name.split('.').pop().toLowerCase();
     
     if (!validExtensions.includes(fileExt)) {
-      showToast('Errore file', 'Carica solo file in formato Excel (.xlsx) o CSV (.csv)', 'error');
+      showToast('Errore file', 'Carica solo file in formato Excel (.xlsx), CSV (.csv) o Manifest TNT (.pdf)', 'error');
       return;
     }
 
@@ -1487,9 +1763,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Interazione API: parse-file
-  const importStep1 = document.getElementById('import-step-1');
-  const importStep2 = document.getElementById('import-step-2');
-  const importStep3 = document.getElementById('import-step-3');
   const mapReferenceCol = document.getElementById('map-reference-col');
   const mapTrackingCol = document.getElementById('map-tracking-col');
   const previewTableHead = document.getElementById('preview-table-head');
@@ -1498,7 +1771,6 @@ document.addEventListener('DOMContentLoaded', () => {
   async function parseFile(fileData, fileName) {
     if (!dropZone) return;
     
-    const originalZoneHTML = dropZone.innerHTML;
     dropZone.innerHTML = `
       <span class="spinner" style="width:36px;height:36px;margin-bottom:16px;"></span>
       <h3>Lettura del file in corso...</h3>
@@ -1530,12 +1802,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function resetImportStep1() {
+    currentFileData = null;
+    currentFileName = '';
+    currentPdfRows = null;
+    currentIsPdf = false;
+
     if (!dropZone) return;
     dropZone.innerHTML = `
       <i data-lucide="file-up"></i>
       <h3>Trascina il file qui o clicca per sfogliare</h3>
-      <p>Supporta formati Excel (.xlsx) e CSV (.csv)</p>
-      <input type="file" id="file-input" class="hidden-file-input" accept=".xlsx,.csv">
+      <p>Supporta formati Excel (.xlsx), CSV (.csv) e Manifest TNT (.pdf)</p>
+      <input type="file" id="file-input" class="hidden-file-input" accept=".xlsx,.csv,.pdf">
     `;
     lucide.createIcons();
     
@@ -1551,63 +1828,317 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderMappingStep(data) {
-    const { headers, preview, autoMapped, totalRows } = data;
-    
     const importDetectedRows = document.getElementById('import-detected-rows');
-    if (importDetectedRows) {
-      importDetectedRows.textContent = totalRows !== undefined ? totalRows : 0;
-    }
-    
-    // Popola i menu a tendina
-    mapReferenceCol.innerHTML = '';
-    mapTrackingCol.innerHTML = '';
-    
-    headers.forEach(h => {
-      const opt1 = document.createElement('option');
-      opt1.value = h;
-      opt1.textContent = h;
-      if (h === autoMapped.referenceColumn) opt1.selected = true;
-      mapReferenceCol.appendChild(opt1);
-      
-      const opt2 = document.createElement('option');
-      opt2.value = h;
-      opt2.textContent = h;
-      if (h === autoMapped.trackingColumn) opt2.selected = true;
-      mapTrackingCol.appendChild(opt2);
-    });
+    const detectedRowsBadge = document.getElementById('detected-rows-badge');
+    const step2Title = document.getElementById('step-2-title');
+    const step2Subtitle = document.getElementById('step-2-subtitle');
+    const previewHeadingText = document.getElementById('preview-heading-text');
+    const mappingFieldsExcel = document.getElementById('mapping-fields-excel');
+    const pdfManifestSummary = document.getElementById('pdf-manifest-summary');
+    const pdfStatusText = document.getElementById('pdf-manifest-status-text');
+    const pdfBadges = document.getElementById('pdf-manifest-badges');
+    const pdfErrors = document.getElementById('pdf-manifest-errors');
 
-    // Intestazione tabella anteprima
-    previewTableHead.innerHTML = '';
-    const trHead = document.createElement('tr');
-    headers.forEach(h => {
-      const th = document.createElement('th');
-      th.textContent = h;
-      trHead.appendChild(th);
-    });
-    previewTableHead.appendChild(trHead);
+    if (data.isPdf) {
+      currentIsPdf = true;
+      currentPdfRows = data.rows || [];
 
-    // Righe tabella anteprima
-    previewTableBody.innerHTML = '';
-    if (preview.length === 0) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="${headers.length}" class="text-center" style="color:var(--text-muted); padding: 24px 0;">Nessun dato rilevato per l'anteprima.</td>`;
-      previewTableBody.appendChild(tr);
-    } else {
-      preview.forEach(row => {
+      if (importDetectedRows) {
+        importDetectedRows.textContent = data.totalRows !== undefined ? data.totalRows : currentPdfRows.length;
+      }
+      if (detectedRowsBadge) {
+        detectedRowsBadge.className = 'badge badge-purple';
+        detectedRowsBadge.innerHTML = `<i data-lucide="file-text" style="width:14px;height:14px;"></i><span>Rilevate <strong>${data.totalRows || currentPdfRows.length}</strong> spedizioni TNT</span>`;
+      }
+      if (step2Title) step2Title.textContent = '2. Verifica Manifest TNT ed Import';
+      if (step2Subtitle) step2Subtitle.textContent = 'Verifica i dati estratti dal documento PDF di TNT prima di procedere all\'aggiornamento.';
+      if (previewHeadingText) previewHeadingText.textContent = 'Anteprima Spedizioni TNT Rilevate';
+
+      // Mostra riepilogo PDF e nascondi mappatura colonne Excel
+      if (mappingFieldsExcel) mappingFieldsExcel.classList.add('hidden');
+      if (pdfManifestSummary) pdfManifestSummary.classList.remove('hidden');
+
+      // Validazione e coerenza colli
+      if (data.validation && data.validation.valid) {
+        if (pdfStatusText) {
+          pdfStatusText.textContent = `Controllo coerenza superato: ${data.validation.pdfTotalColli} colli totali (Grand Totals) corrispondenti.`;
+        }
+        if (pdfBadges) {
+          pdfBadges.innerHTML = `
+            <span class="badge badge-success" style="display:inline-flex;align-items:center;gap:5px;font-size:0.8rem;padding:4px 10px;">
+              <i data-lucide="check-circle" style="width:14px;height:14px;"></i> Coerenza OK (${data.validation.pdfTotalColli} colli)
+            </span>
+            <span class="badge badge-purple" style="display:inline-flex;align-items:center;gap:5px;font-size:0.8rem;padding:4px 10px;">
+              <i data-lucide="package" style="width:14px;height:14px;"></i> ${data.totalRows} Spedizioni
+            </span>
+          `;
+        }
+        if (pdfErrors) pdfErrors.classList.add('hidden');
+      } else {
+        const errMsg = (data.validation && data.validation.error) || 'Mancata corrispondenza nel totale colli del manifest TNT.';
+        if (pdfStatusText) {
+          pdfStatusText.textContent = 'Attenzione: riscontrata anomalia nel manifest PDF.';
+        }
+        if (pdfBadges) {
+          pdfBadges.innerHTML = `
+            <span class="badge badge-danger" style="display:inline-flex;align-items:center;gap:5px;font-size:0.8rem;padding:4px 10px;">
+              <i data-lucide="alert-triangle" style="width:14px;height:14px;"></i> Discrepanza Colli
+            </span>
+          `;
+        }
+        if (pdfErrors) {
+          pdfErrors.textContent = errMsg;
+          pdfErrors.classList.remove('hidden');
+        }
+      }
+
+      // RICONOSCIMENTO AUTOMATICO CORRIERE TNT (Manifest PDF)
+      if (availableCarriers && availableCarriers.length > 0) {
+        const savedTntCarrier = localStorage.getItem('preferred_carrier_tnt');
+        let targetId = savedTntCarrier;
+        if (!targetId) {
+          const tntCarrier = findCarrierByKeyword('tnt');
+          if (tntCarrier) targetId = tntCarrier.id;
+        }
+        if (targetId && fileCarrierSelect) {
+          fileCarrierSelect.value = targetId;
+        }
+        if (fileChangeCarrier) {
+          const savedChangeTnt = localStorage.getItem('pref_change_carrier_tnt');
+          fileChangeCarrier.checked = (savedChangeTnt !== null) ? (savedChangeTnt === 'true') : true;
+        }
+      }
+
+      // Tabella anteprima TNT
+      previewTableHead.innerHTML = `
+        <tr>
+          <th width="40" class="text-center">
+            <input type="checkbox" id="file-master-checkbox" checked aria-label="Seleziona tutte le spedizioni">
+          </th>
+          <th width="60">N°</th>
+          <th>Riferimento Ordine (PrestaShop)</th>
+          <th>Codice Tracking TNT</th>
+          <th width="90">Colli</th>
+        </tr>
+      `;
+      previewTableBody.innerHTML = '';
+      const tntRows = data.preview || data.rows || [];
+      if (tntRows.length === 0) {
         const tr = document.createElement('tr');
-        headers.forEach(h => {
-          const td = document.createElement('td');
-          td.textContent = row[h] || '';
-          tr.appendChild(td);
-        });
+        tr.innerHTML = `<td colspan="5" class="text-center" style="color:var(--text-muted); padding: 24px 0;">Nessun dato valido rilevato nel PDF TNT.</td>`;
         previewTableBody.appendChild(tr);
+      } else {
+        tntRows.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="text-center">
+              <input type="checkbox" class="file-row-checkbox" data-index="${row.index}" checked aria-label="Seleziona spedizione ${row.index}">
+            </td>
+            <td class="font-semibold text-center" style="color:var(--text-secondary);">${row.index}</td>
+            <td><code class="font-mono font-semibold" style="color:var(--fedex-purple);">${escapeHTML(row.reference)}</code></td>
+            <td><code class="font-mono font-semibold" style="color:var(--color-accent);">${escapeHTML(row.trackingNumber)}</code></td>
+            <td><span class="badge badge-blue">${row.pieces || 1}</span></td>
+          `;
+          previewTableBody.appendChild(tr);
+        });
+      }
+
+    } else {
+      // Excel / CSV
+      currentIsPdf = false;
+      currentPdfRows = null;
+
+      const { headers, preview, autoMapped, totalRows } = data;
+      
+      if (importDetectedRows) {
+        importDetectedRows.textContent = totalRows !== undefined ? totalRows : 0;
+      }
+      if (detectedRowsBadge) {
+        detectedRowsBadge.className = 'badge badge-purple';
+        detectedRowsBadge.innerHTML = `<i data-lucide="file-spreadsheet" style="width:14px;height:14px;"></i><span>Rilevate <strong>${totalRows !== undefined ? totalRows : 0}</strong> righe di dati</span>`;
+      }
+      if (step2Title) step2Title.textContent = '2. Verifica e Configurazione Import';
+      if (step2Subtitle) step2Subtitle.textContent = 'Controlla i dati rilevati e configura le opzioni di corriere prima di applicare l\'aggiornamento.';
+      if (previewHeadingText) previewHeadingText.textContent = 'Anteprima Dati Rilevati';
+
+      // Mostra mappatura colonne Excel e nascondi riepilogo PDF
+      if (mappingFieldsExcel) mappingFieldsExcel.classList.remove('hidden');
+      if (pdfManifestSummary) pdfManifestSummary.classList.add('hidden');
+      
+      // Popola i menu a tendina
+      mapReferenceCol.innerHTML = '';
+      mapTrackingCol.innerHTML = '';
+      
+      headers.forEach(h => {
+        const opt1 = document.createElement('option');
+        opt1.value = h;
+        opt1.textContent = h;
+        if (h === autoMapped.referenceColumn) opt1.selected = true;
+        mapReferenceCol.appendChild(opt1);
+        
+        const opt2 = document.createElement('option');
+        opt2.value = h;
+        opt2.textContent = h;
+        if (h === autoMapped.trackingColumn) opt2.selected = true;
+        mapTrackingCol.appendChild(opt2);
       });
+
+      // RICONOSCIMENTO AUTOMATICO CORRIERE FEDEX (File Excel / CSV)
+      if (availableCarriers && availableCarriers.length > 0) {
+        const savedFedexCarrier = localStorage.getItem('preferred_carrier_fedex');
+        let targetId = savedFedexCarrier;
+        if (!targetId) {
+          const fedexCarrier = findCarrierByKeyword('fedex');
+          if (fedexCarrier) targetId = fedexCarrier.id;
+        }
+        if (targetId && fileCarrierSelect) {
+          fileCarrierSelect.value = targetId;
+        }
+        if (fileChangeCarrier) {
+          const savedChangeFedex = localStorage.getItem('pref_change_carrier_fedex');
+          fileChangeCarrier.checked = (savedChangeFedex !== null) ? (savedChangeFedex === 'true') : false;
+        }
+      }
+
+      // Intestazione tabella anteprima
+      previewTableHead.innerHTML = '';
+      const trHead = document.createElement('tr');
+      const thCb = document.createElement('th');
+      thCb.style.width = '40px';
+      thCb.className = 'text-center';
+      thCb.innerHTML = '<input type="checkbox" id="file-master-checkbox" checked aria-label="Seleziona tutte le righe">';
+      trHead.appendChild(thCb);
+
+      headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        trHead.appendChild(th);
+      });
+      previewTableHead.appendChild(trHead);
+
+      // Righe tabella anteprima
+      previewTableBody.innerHTML = '';
+      const excelRows = preview || [];
+      if (excelRows.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="${headers.length + 1}" class="text-center" style="color:var(--text-muted); padding: 24px 0;">Nessun dato rilevato per l'anteprima.</td>`;
+        previewTableBody.appendChild(tr);
+      } else {
+        excelRows.forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          const tdCb = document.createElement('td');
+          tdCb.className = 'text-center';
+          const rowNum = row.__rowNum || (idx + 2);
+          tdCb.innerHTML = `<input type="checkbox" class="file-row-checkbox" data-row-num="${rowNum}" checked aria-label="Seleziona riga ${rowNum}">`;
+          tr.appendChild(tdCb);
+
+          headers.forEach(h => {
+            const td = document.createElement('td');
+            td.textContent = row[h] || '';
+            tr.appendChild(td);
+          });
+          previewTableBody.appendChild(tr);
+        });
+      }
     }
+
+    bindFileSelectionEvents();
+    updateFileSelectionSummary();
 
     importStep1.classList.add('hidden');
     importStep2.classList.remove('hidden');
     importStep3.classList.add('hidden');
     lucide.createIcons();
+  }
+
+  // Gestione selezione righe per import file (Master checkbox & contatore)
+  function updateFileSelectionSummary() {
+    const masterCb = document.getElementById('file-master-checkbox');
+    const countEl = document.getElementById('file-selected-count');
+    const startBtn = document.getElementById('btn-start-import');
+    const checkboxes = previewTableBody ? previewTableBody.querySelectorAll('.file-row-checkbox') : [];
+
+    const total = checkboxes.length;
+    let selected = 0;
+    checkboxes.forEach(cb => {
+      if (cb.checked) selected++;
+    });
+
+    if (countEl) {
+      countEl.textContent = `${selected} di ${total}`;
+    }
+
+    if (masterCb) {
+      if (total === 0) {
+        masterCb.checked = false;
+        masterCb.indeterminate = false;
+        masterCb.disabled = true;
+      } else if (selected === total) {
+        masterCb.checked = true;
+        masterCb.indeterminate = false;
+        masterCb.disabled = false;
+      } else if (selected === 0) {
+        masterCb.checked = false;
+        masterCb.indeterminate = false;
+        masterCb.disabled = false;
+      } else {
+        masterCb.checked = false;
+        masterCb.indeterminate = true;
+        masterCb.disabled = false;
+      }
+    }
+
+    if (startBtn) {
+      if (selected === 0) {
+        startBtn.disabled = true;
+      } else {
+        startBtn.disabled = false;
+      }
+    }
+  }
+
+  function bindFileSelectionEvents() {
+    const masterCb = document.getElementById('file-master-checkbox');
+    if (masterCb) {
+      masterCb.onchange = () => {
+        const isChecked = masterCb.checked;
+        const checkboxes = previewTableBody ? previewTableBody.querySelectorAll('.file-row-checkbox') : [];
+        checkboxes.forEach(cb => {
+          cb.checked = isChecked;
+        });
+        updateFileSelectionSummary();
+      };
+    }
+
+    const btnFileSelectAll = document.getElementById('btn-file-select-all');
+    if (btnFileSelectAll) {
+      btnFileSelectAll.onclick = () => {
+        const checkboxes = previewTableBody ? previewTableBody.querySelectorAll('.file-row-checkbox') : [];
+        checkboxes.forEach(cb => {
+          cb.checked = true;
+        });
+        updateFileSelectionSummary();
+      };
+    }
+
+    const btnFileDeselectAll = document.getElementById('btn-file-deselect-all');
+    if (btnFileDeselectAll) {
+      btnFileDeselectAll.onclick = () => {
+        const checkboxes = previewTableBody ? previewTableBody.querySelectorAll('.file-row-checkbox') : [];
+        checkboxes.forEach(cb => {
+          cb.checked = false;
+        });
+        updateFileSelectionSummary();
+      };
+    }
+
+    if (previewTableBody) {
+      previewTableBody.onchange = (e) => {
+        if (e.target && e.target.classList.contains('file-row-checkbox')) {
+          updateFileSelectionSummary();
+        }
+      };
+    }
   }
 
   // Pulsanti Step 2
@@ -1625,17 +2156,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnStartImport) {
     btnStartImport.addEventListener('click', async () => {
-      const refCol = mapReferenceCol.value;
-      const trackCol = mapTrackingCol.value;
+      let refCol = null;
+      let trackCol = null;
 
-      if (!refCol || !trackCol) {
-        showToast('Errore mappatura', 'Seleziona entrambe le colonne obbligatorie.', 'error');
+      const checkedCbs = previewTableBody ? previewTableBody.querySelectorAll('.file-row-checkbox:checked') : [];
+      if (checkedCbs.length === 0) {
+        showToast('Nessuna riga selezionata', 'Seleziona almeno una spedizione o riga da importare.', 'warning');
         return;
       }
 
-      if (refCol === trackCol) {
-        showToast('Errore mappatura', 'La colonna Riferimento e la colonna Codice Tracking non possono coincidere.', 'warning');
-        return;
+      if (!currentIsPdf) {
+        refCol = mapReferenceCol.value;
+        trackCol = mapTrackingCol.value;
+
+        if (!refCol || !trackCol) {
+          showToast('Errore mappatura', 'Seleziona entrambe le colonne obbligatorie.', 'error');
+          return;
+        }
+
+        if (refCol === trackCol) {
+          showToast('Errore mappatura', 'La colonna Riferimento e la colonna Codice Tracking non possono coincidere.', 'warning');
+          return;
+        }
+      } else {
+        if (!currentPdfRows || currentPdfRows.length === 0) {
+          showToast('Errore file', 'Nessuna riga valida da importare dal file PDF TNT.', 'error');
+          return;
+        }
       }
 
       if (activePollingInterval) {
@@ -1643,22 +2190,75 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const carrierSelect = document.getElementById('file-carrier-select');
+      const changeCarrierCb = document.getElementById('file-change-carrier');
+      const overwriteCb = document.getElementById('file-overwrite-tracking');
+
+      const carrierId = carrierSelect ? carrierSelect.value : null;
+      const changeCarrier = changeCarrierCb ? changeCarrierCb.checked : false;
+      const overwrite = overwriteCb ? overwriteCb.checked : false;
+
+      if (changeCarrier && !carrierId) {
+        showToast('Seleziona Corriere', 'Hai attivato l\'aggiornamento del corriere, ma non hai selezionato nessun corriere dalla lista.', 'warning');
+        return;
+      }
+
+      const fileRememberCarrierCb = document.getElementById('file-remember-carrier');
+      if (carrierId && (!fileRememberCarrierCb || fileRememberCarrierCb.checked)) {
+        if (currentIsPdf) {
+          localStorage.setItem('preferred_carrier_tnt', carrierId);
+          localStorage.setItem('pref_change_carrier_tnt', changeCarrier ? 'true' : 'false');
+        } else {
+          localStorage.setItem('preferred_carrier_fedex', carrierId);
+          localStorage.setItem('pref_change_carrier_fedex', changeCarrier ? 'true' : 'false');
+        }
+        localStorage.setItem('preferred_prestashop_carrier_id', carrierId);
+      }
+
+      let payload;
+      if (currentIsPdf) {
+        const selectedIndices = new Set(Array.from(checkedCbs).map(cb => parseInt(cb.getAttribute('data-index'), 10)));
+        const selectedRows = (currentPdfRows || []).filter(r => selectedIndices.has(r.index));
+
+        if (selectedRows.length === 0) {
+          showToast('Nessuna riga selezionata', 'Nessuna riga valida selezionata dal manifest TNT.', 'error');
+          return;
+        }
+
+        payload = {
+          fileName: currentFileName,
+          rows: selectedRows,
+          carrierId: carrierId ? parseInt(carrierId, 10) : null,
+          changeCarrier: changeCarrier,
+          overwrite: overwrite
+        };
+      } else {
+        const selectedRowNums = Array.from(checkedCbs).map(cb => parseInt(cb.getAttribute('data-row-num'), 10));
+
+        payload = {
+          fileData: currentFileData,
+          fileName: currentFileName,
+          referenceColumn: refCol,
+          trackingColumn: trackCol,
+          selectedRowNums: selectedRowNums,
+          carrierId: carrierId ? parseInt(carrierId, 10) : null,
+          changeCarrier: changeCarrier,
+          overwrite: overwrite
+        };
+      }
+
       btnStartImport.disabled = true;
       const originalContent = btnStartImport.innerHTML;
       btnStartImport.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Importazione avviata...';
 
       try {
+
         const response = await fetch('/api/tracking/import', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            fileData: currentFileData,
-            fileName: currentFileName,
-            referenceColumn: refCol,
-            trackingColumn: trackCol
-          })
+          body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
@@ -1920,8 +2520,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Step 2 Direct Sync Result Logic
-  const directStep1 = document.getElementById('direct-step-1');
-  const directStep2 = document.getElementById('direct-step-2');
   const directResultsTableBody = document.getElementById('direct-results-table-body');
   const directResultsMasterCheckbox = document.getElementById('direct-results-master-checkbox');
   const btnCancelDirectResults = document.getElementById('btn-cancel-direct-results');
@@ -2005,6 +2603,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateDirectResultsMasterCheckboxState();
     lucide.createIcons();
+
+    // Riconoscimento automatico corriere FedEx per Sincronizzazione Diretta
+    if (availableCarriers && availableCarriers.length > 0) {
+      const savedFedexCarrier = localStorage.getItem('preferred_carrier_fedex');
+      let targetId = savedFedexCarrier;
+      if (!targetId) {
+        const fedexCarrier = findCarrierByKeyword('fedex');
+        if (fedexCarrier) targetId = fedexCarrier.id;
+      }
+      if (targetId && directCarrierSelect) {
+        directCarrierSelect.value = targetId;
+      }
+      if (directChangeCarrier) {
+        const savedChange = localStorage.getItem('pref_change_carrier_fedex');
+        directChangeCarrier.checked = (savedChange !== null) ? (savedChange === 'true') : false;
+      }
+    }
   }
 
   if (directResultsMasterCheckbox) {
@@ -2065,6 +2680,26 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const carrierSelect = document.getElementById('direct-carrier-select');
+      const changeCarrierCb = document.getElementById('direct-change-carrier');
+      const overwriteCb = document.getElementById('direct-overwrite-tracking');
+
+      const carrierId = carrierSelect ? carrierSelect.value : null;
+      const changeCarrier = changeCarrierCb ? changeCarrierCb.checked : false;
+      const overwrite = overwriteCb ? overwriteCb.checked : false;
+
+      if (changeCarrier && !carrierId) {
+        showToast('Seleziona Corriere', 'Hai attivato l\'aggiornamento del corriere, ma non hai selezionato nessun corriere dalla lista.', 'warning');
+        return;
+      }
+
+      const directRememberCarrierCb = document.getElementById('direct-remember-carrier');
+      if (carrierId && (!directRememberCarrierCb || directRememberCarrierCb.checked)) {
+        localStorage.setItem('preferred_carrier_fedex', carrierId);
+        localStorage.setItem('pref_change_carrier_fedex', changeCarrier ? 'true' : 'false');
+        localStorage.setItem('preferred_prestashop_carrier_id', carrierId);
+      }
+
       btnApplyDirectImport.disabled = true;
       const originalContent = btnApplyDirectImport.innerHTML;
       btnApplyDirectImport.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Inizializzazione...';
@@ -2073,7 +2708,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const response = await fetch('/api/tracking/import-direct-to-prestashop', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orders: ordersToImport })
+          body: JSON.stringify({
+            orders: ordersToImport,
+            carrierId: carrierId ? parseInt(carrierId, 10) : null,
+            changeCarrier: changeCarrier,
+            overwrite: overwrite
+          })
         });
 
         if (!response.ok) {
@@ -2108,7 +2748,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const summaryWarning = document.getElementById('summary-warning');
   const summaryError = document.getElementById('summary-error');
   const logTableBody = document.getElementById('log-table-body');
-  const btnResetImport = document.getElementById('btn-reset-import');
 
   function renderResultsStep(result) {
     const { summary, details } = result;
@@ -2180,25 +2819,22 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    importStep1.classList.add('hidden');
-    importStep2.classList.add('hidden');
-    importStep3.classList.remove('hidden');
-    lucide.createIcons();
+    if (importStep1) importStep1.classList.add('hidden');
+    if (importStep2) importStep2.classList.add('hidden');
+    if (directStep1) directStep1.classList.add('hidden');
+    if (directStep2) directStep2.classList.add('hidden');
+    if (panelImportFile) panelImportFile.classList.add('hidden');
+    if (panelImportDirect) panelImportDirect.classList.add('hidden');
+    if (importStep3) importStep3.classList.remove('hidden');
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+      lucide.createIcons();
+    }
 
     showToast(
       'Importazione Completata',
       `Processati ${summary.totalProcessed} elementi: ${summary.successCount} riusciti, ${summary.warningCount + summary.errorCount} anomalie.`,
       summary.errorCount > 0 ? 'error' : (summary.warningCount > 0 ? 'warning' : 'success')
     );
-  }
-
-  if (btnResetImport) {
-    btnResetImport.addEventListener('click', () => {
-      importStep1.classList.remove('hidden');
-      importStep2.classList.add('hidden');
-      importStep3.classList.add('hidden');
-      resetImportStep1();
-    });
   }
 
   // Button Close Detail
@@ -2220,12 +2856,266 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // History Pagination State
+  let allHistoryData = [];
+  let historyCurrentPage = 1;
+  let historyPageSize = parseInt(localStorage.getItem('history_page_size'), 10) || 10;
+
+  // Bind History Page Size Selector
+  const historyPageSizeSelect = document.getElementById('history-page-size');
+  if (historyPageSizeSelect) {
+    historyPageSizeSelect.value = String(historyPageSize);
+    historyPageSizeSelect.addEventListener('change', (e) => {
+      const newSize = parseInt(e.target.value, 10) || 10;
+      historyPageSize = newSize;
+      localStorage.setItem('history_page_size', newSize);
+      historyCurrentPage = 1;
+      renderHistoryPage();
+    });
+  }
+
+  // Calculate pagination pages array with ellipsis
+  function getPaginationPages(current, total) {
+    if (total <= 7) {
+      const pages = [];
+      for (let i = 1; i <= total; i++) pages.push(i);
+      return pages;
+    }
+    if (current <= 4) {
+      return [1, 2, 3, 4, 5, '...', total];
+    }
+    if (current >= total - 3) {
+      return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, '...', current - 1, current, current + 1, '...', total];
+  }
+
+  // Render pagination navigation controls and summary
+  function renderHistoryPagination(totalPages, totalItems, startIdx, endIdx) {
+    const paginationContainer = document.getElementById('history-pagination');
+    const summaryEl = document.getElementById('history-pagination-summary');
+    const navEl = document.getElementById('history-pagination-nav');
+    const pageSizeSelect = document.getElementById('history-page-size');
+
+    if (!paginationContainer || !summaryEl || !navEl) return;
+
+    if (totalItems === 0) {
+      paginationContainer.classList.add('hidden');
+      return;
+    }
+
+    paginationContainer.classList.remove('hidden');
+
+    if (pageSizeSelect) {
+      pageSizeSelect.value = String(historyPageSize);
+    }
+
+    const showingFrom = startIdx + 1;
+    const showingTo = Math.min(endIdx, totalItems);
+    summaryEl.innerHTML = `Mostrati <strong>${showingFrom}–${showingTo}</strong> di <strong>${totalItems}</strong> operazioni`;
+
+    navEl.innerHTML = '';
+
+    // First button («)
+    const btnFirst = document.createElement('button');
+    btnFirst.className = 'pagination-btn';
+    btnFirst.title = 'Prima pagina';
+    btnFirst.innerHTML = '&laquo;';
+    btnFirst.disabled = historyCurrentPage <= 1;
+    btnFirst.addEventListener('click', () => {
+      if (historyCurrentPage > 1) {
+        historyCurrentPage = 1;
+        renderHistoryPage();
+      }
+    });
+    navEl.appendChild(btnFirst);
+
+    // Prev button (‹)
+    const btnPrev = document.createElement('button');
+    btnPrev.className = 'pagination-btn';
+    btnPrev.title = 'Pagina precedente';
+    btnPrev.innerHTML = '&lsaquo;';
+    btnPrev.disabled = historyCurrentPage <= 1;
+    btnPrev.addEventListener('click', () => {
+      if (historyCurrentPage > 1) {
+        historyCurrentPage--;
+        renderHistoryPage();
+      }
+    });
+    navEl.appendChild(btnPrev);
+
+    // Numbered & ellipsis buttons
+    const pages = getPaginationPages(historyCurrentPage, totalPages);
+    pages.forEach(p => {
+      if (p === '...') {
+        const span = document.createElement('span');
+        span.className = 'pagination-ellipsis';
+        span.textContent = '…';
+        navEl.appendChild(span);
+      } else {
+        const btnPage = document.createElement('button');
+        btnPage.className = `pagination-btn ${p === historyCurrentPage ? 'active' : ''}`;
+        btnPage.textContent = p;
+        if (p === historyCurrentPage) {
+          btnPage.disabled = true;
+        } else {
+          btnPage.addEventListener('click', () => {
+            historyCurrentPage = p;
+            renderHistoryPage();
+          });
+        }
+        navEl.appendChild(btnPage);
+      }
+    });
+
+    // Next button (›)
+    const btnNext = document.createElement('button');
+    btnNext.className = 'pagination-btn';
+    btnNext.title = 'Pagina successiva';
+    btnNext.innerHTML = '&rsaquo;';
+    btnNext.disabled = historyCurrentPage >= totalPages;
+    btnNext.addEventListener('click', () => {
+      if (historyCurrentPage < totalPages) {
+        historyCurrentPage++;
+        renderHistoryPage();
+      }
+    });
+    navEl.appendChild(btnNext);
+
+    // Last button (»)
+    const btnLast = document.createElement('button');
+    btnLast.className = 'pagination-btn';
+    btnLast.title = 'Ultima pagina';
+    btnLast.innerHTML = '&raquo;';
+    btnLast.disabled = historyCurrentPage >= totalPages;
+    btnLast.addEventListener('click', () => {
+      if (historyCurrentPage < totalPages) {
+        historyCurrentPage = totalPages;
+        renderHistoryPage();
+      }
+    });
+    navEl.appendChild(btnLast);
+  }
+
+  // Render current page of history
+  function renderHistoryPage() {
+    const tableBody = document.getElementById('history-table-body');
+    const paginationContainer = document.getElementById('history-pagination');
+    if (!tableBody) return;
+
+    if (!Array.isArray(allHistoryData) || allHistoryData.length === 0) {
+      if (paginationContainer) paginationContainer.classList.add('hidden');
+      tableBody.innerHTML = `
+        <tr class="empty-row">
+          <td colspan="5">
+            <div class="empty-state">
+              <i data-lucide="history"></i>
+              <p>Nessuna operazione registrata nello storico.</p>
+            </div>
+          </td>
+        </tr>
+      `;
+      lucide.createIcons();
+      return;
+    }
+
+    const totalItems = allHistoryData.length;
+    const totalPages = Math.ceil(totalItems / historyPageSize) || 1;
+    if (historyCurrentPage > totalPages) historyCurrentPage = totalPages;
+    if (historyCurrentPage < 1) historyCurrentPage = 1;
+
+    const startIdx = (historyCurrentPage - 1) * historyPageSize;
+    const endIdx = startIdx + historyPageSize;
+    const pageItems = allHistoryData.slice(startIdx, endIdx);
+
+    tableBody.innerHTML = '';
+    pageItems.forEach(item => {
+      const tr = document.createElement('tr');
+      
+      // Date formatting
+      const dateObj = new Date(item.timestamp);
+      const formattedDate = dateObj.toLocaleString('it-IT', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+
+      // Type Badge
+      const isExport = item.type === 'export';
+      const badgeClass = isExport ? 'badge-export' : 'badge-import';
+      const badgeText = isExport ? 'Esportazione' : 'Importazione';
+
+      // Summary details
+      let summaryText = '';
+      if (isExport) {
+        summaryText = `${item.count} ordini esportati`;
+      } else {
+        const succ = item.summary ? item.summary.successCount : 0;
+        const warn = item.summary ? item.summary.warningCount : 0;
+        const errs = item.summary ? item.summary.errorCount : 0;
+        summaryText = `${succ} riusciti, ${warn} avvisi, ${errs} errori`;
+      }
+
+      // Actions buttons
+      let actionsHTML = '';
+      if (isExport && item.fileName) {
+        actionsHTML += `
+          <a href="/api/history/download/${encodeURIComponent(item.fileName)}" class="btn btn-outline btn-sm btn-icon-only" download title="Scarica file Excel" style="margin-right: 6px; display: inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0;">
+            <i data-lucide="download" style="width:16px; height:16px;"></i>
+          </a>
+        `;
+      }
+      
+      actionsHTML += `
+        <button class="btn btn-outline btn-sm btn-icon-only btn-view-details" data-id="${item.id}" title="Visualizza dettagli log" style="margin-right: 6px; display: inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0;">
+          <i data-lucide="eye" style="width:16px; height:16px;"></i>
+        </button>
+        <button class="btn btn-outline btn-sm btn-icon-only btn-delete-entry" style="border-color: var(--color-error); color: var(--color-error); display: inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0;" data-id="${item.id}" title="Elimina operazione">
+          <i data-lucide="trash-2" style="width:16px; height:16px;"></i>
+        </button>
+      `;
+
+      tr.innerHTML = `
+        <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+        <td>${formattedDate}</td>
+        <td>
+          <div style="font-weight: 600; color: var(--text-primary); font-size: 0.88rem; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(item.fileName || 'Log Importazione')}</div>
+          <div style="font-size: 0.72rem; color: var(--text-muted);">${item.id}</div>
+        </td>
+        <td class="font-medium" style="color: var(--text-secondary);">${summaryText}</td>
+        <td class="text-right">${actionsHTML}</td>
+      `;
+
+      // Event listener for view details
+      tr.querySelector('.btn-view-details').addEventListener('click', () => {
+        showHistoryDetails(item);
+      });
+
+      // Event listener for delete entry
+      tr.querySelector('.btn-delete-entry').addEventListener('click', async () => {
+        if (confirm('Sei sicuro di voler eliminare questa operazione dallo storico? Se si tratta di un\'esportazione, verrà eliminato anche il relativo file Excel dal server.')) {
+          await deleteHistoryEntry(item.id);
+        }
+      });
+
+      tableBody.appendChild(tr);
+    });
+
+    renderHistoryPagination(totalPages, totalItems, startIdx, endIdx);
+    lucide.createIcons();
+  }
+
   async function loadHistory() {
     const tableBody = document.getElementById('history-table-body');
     const detailCard = document.getElementById('history-detail-card');
+    const paginationContainer = document.getElementById('history-pagination');
     if (!tableBody) return;
 
     if (detailCard) detailCard.classList.add('hidden'); // Nascondi dettagli precedenti
+    if (paginationContainer) paginationContainer.classList.add('hidden');
 
     tableBody.innerHTML = `
       <tr>
@@ -2241,101 +3131,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!response.ok) throw new Error('Errore nel recupero dello storico.');
 
       const data = await response.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        tableBody.innerHTML = `
-          <tr class="empty-row">
-            <td colspan="5">
-              <div class="empty-state">
-                <i data-lucide="history"></i>
-                <p>Nessuna operazione registrata nello storico.</p>
-              </div>
-            </td>
-          </tr>
-        `;
-        lucide.createIcons();
-        return;
-      }
-
-      tableBody.innerHTML = '';
-      data.forEach(item => {
-        const tr = document.createElement('tr');
-        
-        // Date formatting
-        const dateObj = new Date(item.timestamp);
-        const formattedDate = dateObj.toLocaleString('it-IT', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        });
-
-        // Type Badge
-        const isExport = item.type === 'export';
-        const badgeClass = isExport ? 'badge-export' : 'badge-import';
-        const badgeText = isExport ? 'Esportazione' : 'Importazione';
-
-        // Summary details
-        let summaryText = '';
-        if (isExport) {
-          summaryText = `${item.count} ordini esportati`;
-        } else {
-          const succ = item.summary ? item.summary.successCount : 0;
-          const warn = item.summary ? item.summary.warningCount : 0;
-          const errs = item.summary ? item.summary.errorCount : 0;
-          summaryText = `${succ} riusciti, ${warn} avvisi, ${errs} errori`;
-        }
-
-        // Actions buttons
-        let actionsHTML = '';
-        if (isExport && item.fileName) {
-          actionsHTML += `
-            <a href="/api/history/download/${encodeURIComponent(item.fileName)}" class="btn btn-outline btn-sm btn-icon-only" download title="Scarica file Excel" style="margin-right: 6px; display: inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0;">
-              <i data-lucide="download" style="width:16px; height:16px;"></i>
-            </a>
-          `;
-        }
-        
-        actionsHTML += `
-          <button class="btn btn-outline btn-sm btn-icon-only btn-view-details" data-id="${item.id}" title="Visualizza dettagli log" style="margin-right: 6px; display: inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0;">
-            <i data-lucide="eye" style="width:16px; height:16px;"></i>
-          </button>
-          <button class="btn btn-outline btn-sm btn-icon-only btn-delete-entry" style="border-color: var(--color-error); color: var(--color-error); display: inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0;" data-id="${item.id}" title="Elimina operazione">
-            <i data-lucide="trash-2" style="width:16px; height:16px;"></i>
-          </button>
-        `;
-
-        tr.innerHTML = `
-          <td><span class="badge ${badgeClass}">${badgeText}</span></td>
-          <td>${formattedDate}</td>
-          <td>
-            <div style="font-weight: 600; color: var(--text-primary); font-size: 0.88rem; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(item.fileName || 'Log Importazione')}</div>
-            <div style="font-size: 0.72rem; color: var(--text-muted);">${item.id}</div>
-          </td>
-          <td class="font-medium" style="color: var(--text-secondary);">${summaryText}</td>
-          <td class="text-right">${actionsHTML}</td>
-        `;
-
-        // Event listener for view details
-        tr.querySelector('.btn-view-details').addEventListener('click', () => {
-          showHistoryDetails(item);
-        });
-
-        // Event listener for delete entry
-        tr.querySelector('.btn-delete-entry').addEventListener('click', async () => {
-          if (confirm('Sei sicuro di voler eliminare questa operazione dallo storico? Se si tratta di un\'esportazione, verrà eliminato anche il relativo file Excel dal server.')) {
-            await deleteHistoryEntry(item.id);
-          }
-        });
-
-        tableBody.appendChild(tr);
-      });
-
-      lucide.createIcons();
+      allHistoryData = Array.isArray(data) ? data : [];
+      renderHistoryPage();
 
     } catch (error) {
       console.error(error);
+      if (paginationContainer) paginationContainer.classList.add('hidden');
       tableBody.innerHTML = `
         <tr>
           <td colspan="5" class="text-center" style="padding: 30px; color: var(--color-error);">
@@ -2470,6 +3271,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (response.ok) {
         showToast('Successo', result.message || 'Operazione eliminata.', 'success');
+        // Adjust page if current page became empty
+        const remaining = allHistoryData.filter(i => i.id !== id).length;
+        const newTotalPages = Math.ceil(remaining / historyPageSize) || 1;
+        if (historyCurrentPage > newTotalPages) {
+          historyCurrentPage = newTotalPages;
+        }
         await loadHistory();
       } else {
         showToast('Errore', result.error || 'Impossibile eliminare l\'operazione.', 'error');
@@ -2487,6 +3294,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (response.ok) {
         showToast('Successo', result.message || 'Storico ripulito.', 'success');
+        historyCurrentPage = 1;
         await loadHistory();
       } else {
         showToast('Errore', result.error || 'Impossibile svuotare lo storico.', 'error');

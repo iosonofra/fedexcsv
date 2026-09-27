@@ -77,6 +77,13 @@ body {
   align-items: center;
   gap: 14px;
   margin-bottom: 40px;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity var(--transition-fast);
+}
+
+.brand:hover {
+  opacity: 0.9;
 }
 
 .brand-logo {
@@ -1894,8 +1901,60 @@ input[type="checkbox"] {
   margin-top: 2px;
 }
 
+/* Pagination System */
+.pagination-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
 
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--card-border);
+  background: #ffffff;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  user-select: none;
+}
 
+.pagination-btn:hover:not(:disabled):not(.active) {
+  background: #f1f5f9;
+  border-color: var(--card-hover-border);
+  color: var(--text-primary);
+}
 
+.pagination-btn.active {
+  background: var(--fedex-purple);
+  border-color: var(--fedex-purple);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(77, 20, 140, 0.25);
+  cursor: default;
+}
 
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
 
+.pagination-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 32px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}

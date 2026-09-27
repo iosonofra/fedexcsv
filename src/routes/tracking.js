@@ -5,6 +5,7 @@ const { Readable } = require('stream');
 const settingsStore = require('../services/settingsStore');
 const historyStore = require('../services/historyStore');
 const fedexApi = require('../services/fedexApi');
+const tntParser = require('../services/tntParser');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -43,13 +44,62 @@ async function loadWorkbook(base64Data, fileName) {
 }
 
 /**
+ * Endpoint per recuperare l'elenco dei corrieri di PrestaShop (inclusi quelli non attivi).
+ */
+router.get('/carriers', async (req, res) => {
+  try {
+    const onlyActive = req.query.onlyActive === 'true' || req.query.onlyActive === '1';
+    const psClient = settingsStore.getPrestaShopClient();
+    const carriers = await psClient.getCarriers({ onlyActive });
+    res.json(carriers);
+  } catch (error) {
+    console.error('Errore nel recupero dei corrieri PrestaShop:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Endpoint to parse uploaded file and detect headers + preview + auto-mapped columns.
+ * Supporta Excel (.xlsx), CSV (.csv) e Manifest TNT in PDF (.pdf).
  */
 router.post('/parse-file', async (req, res) => {
   try {
     const { fileData, fileName } = req.body;
     if (!fileData || !fileName) {
       return res.status(400).json({ error: 'Dati del file o nome del file mancanti.' });
+    }
+
+    // Supporto per Manifest TNT in formato PDF
+    if (fileName.toLowerCase().endsWith('.pdf')) {
+      const buffer = Buffer.from(fileData, 'base64');
+      const parseResult = await tntParser.parseManifest(buffer);
+      
+      const formattedRows = parseResult.rows.map((r, i) => ({
+        index: i + 1,
+        reference: r.reference,
+        tracking: r.tracking,
+        trackingNumber: r.tracking,
+        pieces: r.pieces
+      }));
+
+      return res.json({
+        isPdf: true,
+        format: 'tnt_pdf',
+        rows: formattedRows,
+        preview: formattedRows,
+        validation: {
+          valid: parseResult.ok,
+          pdfTotalColli: parseResult.expected,
+          parsedTotalColli: parseResult.found,
+          error: parseResult.errors.join('; ')
+        },
+        expected: parseResult.expected,
+        found: parseResult.found,
+        ok: parseResult.ok,
+        dupes: parseResult.dupes,
+        errors: parseResult.errors,
+        totalRows: formattedRows.length
+      });
     }
 
     const wb = await loadWorkbook(fileData, fileName);
@@ -68,12 +118,12 @@ router.post('/parse-file', async (req, res) => {
 
     const cleanHeaders = headers.map((h, i) => h || `Colonna ${i + 1}`);
 
-    // Read first 5 data rows for preview
+    // Read all data rows for preview and selection
     const preview = [];
-    const maxRows = Math.min(ws.rowCount, 6);
+    const maxRows = Math.min(ws.rowCount, 1000);
     for (let r = 2; r <= maxRows; r++) {
       const row = ws.getRow(r);
-      const rowData = {};
+      const rowData = { __rowNum: r };
       let hasData = false;
       cleanHeaders.forEach((header, index) => {
         const cellValue = row.getCell(index + 1).value;
@@ -146,9 +196,11 @@ router.post('/parse-file', async (req, res) => {
 /**
  * Helper to execute the import loop in the background and update job status
  */
-async function runBackgroundImport(importId, updates, fileName, psClient) {
+async function runBackgroundImport(importId, updates, fileName, psClient, options = {}) {
   const job = activeImports.get(importId);
   if (!job) return;
+
+  const targetCarrierId = (options.changeCarrier && options.carrierId) ? String(options.carrierId).trim() : null;
 
   try {
     for (const update of updates) {
@@ -179,7 +231,7 @@ async function runBackgroundImport(importId, updates, fileName, psClient) {
         for (const order of matchedOrders) {
           await delay(50); // Small throttle delay between sub-calls
           
-          // Get order carrier
+          // Get order carrier (highest ID)
           const orderCarrier = await psClient.getOrderCarrierForOrder(order.id);
           
           if (!orderCarrier) {
@@ -192,18 +244,38 @@ async function runBackgroundImport(importId, updates, fileName, psClient) {
             continue;
           }
 
-          // Update tracking
-          await psClient.updateOrderCarrierTracking(orderCarrier.id, orderCarrier, trackingNumber);
+          const existingTracking = (orderCarrier.tracking_number || '').trim();
+          
+          // Se il tracking è già presente e diverso, e overwrite non è attivo, salta con avviso
+          if (existingTracking && existingTracking !== trackingNumber && !options.overwrite) {
+            job.warningCount++;
+            job.results.warnings.push({
+              row: rowNum,
+              reference,
+              orderId: order.id,
+              message: `Tracking diverso già presente (${existingTracking}). Sovrascrittura disattivata.`
+            });
+            continue;
+          }
+
+          // Aggiorna tracking e facoltativamente corriere
+          await psClient.updateOrderCarrierTracking(orderCarrier.id, orderCarrier, trackingNumber, targetCarrierId);
           
           job.successCount++;
+          let successMsg = isDuplicate 
+            ? `Spedizione aggiornata (Riferimento duplicato: ordine ID ${order.id})`
+            : `Spedizione aggiornata con successo (ordine ID ${order.id})`;
+          if (targetCarrierId) {
+            successMsg += ` [Corriere #${targetCarrierId}]`;
+          }
+
           job.results.success.push({
             row: rowNum,
             reference,
             orderId: order.id,
             trackingNumber,
-            message: isDuplicate 
-              ? `Spedizione aggiornata (Riferimento duplicato: ordine ID ${order.id})`
-              : `Spedizione aggiornata con successo (ordine ID ${order.id})`
+            carrierId: targetCarrierId,
+            message: successMsg
           });
         }
 
@@ -252,67 +324,89 @@ async function runBackgroundImport(importId, updates, fileName, psClient) {
  */
 router.post('/import', async (req, res) => {
   try {
-    const { fileData, fileName, referenceColumn, trackingColumn } = req.body;
-    if (!fileData || !fileName || !referenceColumn || !trackingColumn) {
-      return res.status(400).json({ error: 'Parametri obbligatori mancanti per l\'importazione.' });
-    }
-
-    const psClient = settingsStore.getPrestaShopClient();
-    const wb = await loadWorkbook(fileData, fileName);
-    const ws = wb.worksheets.find(w => w.rowCount > 0) || wb.worksheets[0];
+    const { fileData, fileName, referenceColumn, trackingColumn, rows, selectedRowNums, carrierId, changeCarrier, overwrite } = req.body;
     
-    if (!ws || ws.rowCount <= 1) {
-      return res.status(400).json({ error: 'Il file non contiene righe di dati da importare.' });
-    }
+    let updates = [];
 
-    // Get header indexes
-    const headers = [];
-    ws.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      headers[colNumber - 1] = (cell.value ? cell.value.toString().trim() : '') || `Colonna ${colNumber}`;
-    });
-
-    const refColIndex = headers.indexOf(referenceColumn) + 1;
-    const trackColIndex = headers.indexOf(trackingColumn) + 1;
-
-    if (refColIndex === 0 || trackColIndex === 0) {
-      return res.status(400).json({ error: 'Colonne di mappatura non trovate nel file.' });
-    }
-
-    // Read all records
-    const updates = [];
-    for (let r = 2; r <= ws.rowCount; r++) {
-      const row = ws.getRow(r);
-      
-      const refVal = row.getCell(refColIndex).value;
-      const trackVal = row.getCell(trackColIndex).value;
-      
-      let reference = '';
-      if (refVal !== null && refVal !== undefined) {
-        reference = typeof refVal === 'object' ? (refVal.text || refVal.result || '') : refVal.toString();
-      }
-      
-      let trackingNumber = '';
-      if (trackVal !== null && trackVal !== undefined) {
-        trackingNumber = typeof trackVal === 'object' ? (trackVal.text || trackVal.result || '') : trackVal.toString();
+    // Se sono state inviate direttamente le righe (es. da Manifest PDF TNT)
+    if (Array.isArray(rows) && rows.length > 0) {
+      updates = rows
+        .filter(r => (r.reference || '').trim() && ((r.tracking || r.trackingNumber) || '').trim())
+        .map((r, idx) => ({
+          reference: r.reference.trim(),
+          trackingNumber: ((r.tracking || r.trackingNumber) || '').trim(),
+          rowNum: r.index || (idx + 1)
+        }));
+    } else {
+      // Importazione da file Excel / CSV tramite mappatura colonne
+      if (!fileData || !fileName || !referenceColumn || !trackingColumn) {
+        return res.status(400).json({ error: 'Parametri obbligatori mancanti per l\'importazione.' });
       }
 
-      reference = reference.trim();
-      trackingNumber = trackingNumber.trim();
+      const wb = await loadWorkbook(fileData, fileName);
+      const ws = wb.worksheets.find(w => w.rowCount > 0) || wb.worksheets[0];
+      
+      if (!ws || ws.rowCount <= 1) {
+        return res.status(400).json({ error: 'Il file non contiene righe di dati da importare.' });
+      }
 
-      if (reference && trackingNumber) {
-        updates.push({ reference, trackingNumber, rowNum: r });
+      // Get header indexes
+      const headers = [];
+      ws.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        headers[colNumber - 1] = (cell.value ? cell.value.toString().trim() : '') || `Colonna ${colNumber}`;
+      });
+
+      const refColIndex = headers.indexOf(referenceColumn) + 1;
+      const trackColIndex = headers.indexOf(trackingColumn) + 1;
+
+      if (refColIndex === 0 || trackColIndex === 0) {
+        return res.status(400).json({ error: 'Colonne di mappatura non trovate nel file.' });
+      }
+
+      // Read all records (filtering by selectedRowNums if specified)
+      const allowedSet = Array.isArray(selectedRowNums) && selectedRowNums.length > 0
+        ? new Set(selectedRowNums.map(n => parseInt(n, 10)))
+        : null;
+
+      for (let r = 2; r <= ws.rowCount; r++) {
+        if (allowedSet && !allowedSet.has(r)) {
+          continue;
+        }
+
+        const row = ws.getRow(r);
+        
+        const refVal = row.getCell(refColIndex).value;
+        const trackVal = row.getCell(trackColIndex).value;
+        
+        let reference = '';
+        if (refVal !== null && refVal !== undefined) {
+          reference = typeof refVal === 'object' ? (refVal.text || refVal.result || '') : refVal.toString();
+        }
+        
+        let trackingNumber = '';
+        if (trackVal !== null && trackVal !== undefined) {
+          trackingNumber = typeof trackVal === 'object' ? (trackVal.text || trackVal.result || '') : trackVal.toString();
+        }
+
+        reference = reference.trim();
+        trackingNumber = trackingNumber.trim();
+
+        if (reference && trackingNumber) {
+          updates.push({ reference, trackingNumber, rowNum: r });
+        }
       }
     }
 
     if (updates.length === 0) {
-      return res.status(400).json({ error: 'Nessun accoppiamento (riferimento ordine, codice tracking) valido trovato nelle righe.' });
+      return res.status(400).json({ error: 'Nessun accoppiamento (riferimento ordine, codice tracking) valido trovato da importare.' });
     }
 
+    const psClient = settingsStore.getPrestaShopClient();
     const importId = `import_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     
     activeImports.set(importId, {
       id: importId,
-      fileName,
+      fileName: fileName || 'Import Spedizioni',
       status: 'processing',
       total: updates.length,
       processed: 0,
@@ -329,7 +423,11 @@ router.post('/import', async (req, res) => {
     });
 
     // Start background processing loop (no await here)
-    runBackgroundImport(importId, updates, fileName, psClient);
+    runBackgroundImport(importId, updates, fileName, psClient, {
+      carrierId,
+      changeCarrier: !!changeCarrier,
+      overwrite: !!overwrite
+    });
 
     res.json({
       importId,
@@ -488,9 +586,11 @@ async function runBackgroundDirectSync(importId, ordersToSync, psClient, fetchOn
   }
 }
 
-async function runBackgroundPrestaShopImport(importId, ordersToImport, psClient) {
+async function runBackgroundPrestaShopImport(importId, ordersToImport, psClient, options = {}) {
   const job = activeImports.get(importId);
   if (!job) return;
+
+  const targetCarrierId = (options.changeCarrier && options.carrierId) ? String(options.carrierId).trim() : null;
 
   try {
     for (let i = 0; i < ordersToImport.length; i++) {
@@ -516,16 +616,35 @@ async function runBackgroundPrestaShopImport(importId, ordersToImport, psClient)
           continue;
         }
 
-        // Update tracking number in PrestaShop
-        await psClient.updateOrderCarrierTracking(orderCarrier.id, orderCarrier, trackingNumber);
+        const existingTracking = (orderCarrier.tracking_number || '').trim();
+        if (existingTracking && existingTracking !== trackingNumber && !options.overwrite) {
+          job.warningCount++;
+          job.results.warnings.push({
+            row: rowNum,
+            reference,
+            orderId,
+            message: `Tracking diverso già presente (${existingTracking}). Sovrascrittura disattivata.`
+          });
+          job.processed++;
+          continue;
+        }
+
+        // Update tracking number and optionally carrier in PrestaShop
+        await psClient.updateOrderCarrierTracking(orderCarrier.id, orderCarrier, trackingNumber, targetCarrierId);
         
         job.successCount++;
+        let successMsg = `Tracking ${trackingNumber} importato con successo per l'ordine ID ${orderId}.`;
+        if (targetCarrierId) {
+          successMsg += ` [Corriere #${targetCarrierId}]`;
+        }
+
         job.results.success.push({
           row: rowNum,
           reference,
           orderId,
           trackingNumber,
-          message: `Tracking ${trackingNumber} importato con successo per l'ordine ID ${orderId}.`
+          carrierId: targetCarrierId,
+          message: successMsg
         });
 
       } catch (err) {
@@ -702,7 +821,7 @@ router.post('/sync-direct', async (req, res) => {
 // POST /api/tracking/import-direct-to-prestashop - start background PrestaShop update with selected trackings
 router.post('/import-direct-to-prestashop', async (req, res) => {
   try {
-    const { orders } = req.body;
+    const { orders, carrierId, changeCarrier, overwrite } = req.body;
     
     if (!orders || !Array.isArray(orders) || orders.length === 0) {
       return res.status(400).json({ error: 'Nessun ordine fornito per l\'importazione.' });
@@ -730,7 +849,11 @@ router.post('/import-direct-to-prestashop', async (req, res) => {
     });
 
     // Start background update (no await here)
-    runBackgroundPrestaShopImport(importId, orders, psClient);
+    runBackgroundPrestaShopImport(importId, orders, psClient, {
+      carrierId,
+      changeCarrier: !!changeCarrier,
+      overwrite: !!overwrite
+    });
 
     res.json({
       importId,

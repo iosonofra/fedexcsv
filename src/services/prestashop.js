@@ -99,6 +99,32 @@ class PrestaShopClient {
     return this.getOrders({ 'filter[reference]': `[${reference}]` });
   }
 
+  async getCarriers({ onlyActive = false } = {}) {
+    try {
+      const params = {
+        display: '[id,id_reference,name,deleted,active]',
+        'filter[deleted]': '0'
+      };
+      if (onlyActive) {
+        params['filter[active]'] = '1';
+      }
+      const { data } = await this.client.get('/carriers', { params });
+      if (!data || !data.carriers) return [];
+      const list = Array.isArray(data.carriers) ? data.carriers : [data.carriers];
+      return list
+        .filter(c => String(c.deleted ?? '0') !== '1' && (!onlyActive || String(c.active ?? '1') !== '0'))
+        .map(c => ({
+          id: String(c.id),
+          ref: String(c.id_reference ?? c.id),
+          name: String(c.name || `Corriere #${c.id}`).trim(),
+          active: String(c.active ?? '1') !== '0'
+        }));
+    } catch (error) {
+      console.error('PrestaShop getCarriers error:', error.message);
+      return [];
+    }
+  }
+
   async getOrderCarrierForOrder(orderId) {
     try {
       const { data } = await this.client.get('/order_carriers', {
@@ -110,22 +136,26 @@ class PrestaShopClient {
       if (!data || !data.order_carriers || data.order_carriers.length === 0) {
         return null;
       }
-      return data.order_carriers[0];
+      const list = Array.isArray(data.order_carriers) ? data.order_carriers : [data.order_carriers];
+      // Seleziona la spedizione con ID più recente (più alto)
+      list.sort((a, b) => Number(b.id) - Number(a.id));
+      return list[0];
     } catch (error) {
       console.error(`PrestaShop getOrderCarrierForOrder(${orderId}) error:`, error.message);
       return null;
     }
   }
 
-  async updateOrderCarrierTracking(orderCarrierId, orderCarrierData, trackingNumber) {
+  async updateOrderCarrierTracking(orderCarrierId, orderCarrierData, trackingNumber, newCarrierId = null) {
     try {
-      // Build the XML payload from the existing order carrier data, updating only tracking_number.
+      const targetCarrierId = newCarrierId || orderCarrierData.id_carrier;
+      // Costruisce l'XML con tracking_number e, se specificato, il nuovo id_carrier
       const xmlPayload = `
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <order_carrier>
     <id>${escapeXML(orderCarrierId)}</id>
     <id_order>${escapeXML(orderCarrierData.id_order)}</id_order>
-    <id_carrier>${escapeXML(orderCarrierData.id_carrier)}</id_carrier>
+    <id_carrier>${escapeXML(targetCarrierId)}</id_carrier>
     <id_order_invoice>${escapeXML(orderCarrierData.id_order_invoice)}</id_order_invoice>
     <weight>${escapeXML(orderCarrierData.weight)}</weight>
     <shipping_cost_tax_excl>${escapeXML(orderCarrierData.shipping_cost_tax_excl)}</shipping_cost_tax_excl>
