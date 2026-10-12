@@ -39,6 +39,10 @@
           <i data-lucide="upload"></i>
           <span>Importa Tracking su PrestaShop</span>
         </button>
+        <button class="menu-item" id="menu-manifest">
+          <i data-lucide="file-text"></i>
+          <span>Borderò di Spedizione</span>
+        </button>
         <button class="menu-item" id="menu-shipment-settings">
           <i data-lucide="sliders"></i>
           <span>Configurazione Spedizione</span>
@@ -219,9 +223,15 @@
           </div>
           
           <div class="upload-zone" id="drop-zone">
-            <i data-lucide="file-up"></i>
-            <h3>Trascina il file qui o clicca per sfogliare</h3>
-            <p>Supporta formati Excel (.xlsx), CSV (.csv) e Manifest TNT (.pdf)</p>
+            <div class="drop-zone-icon">
+              <i data-lucide="file-up"></i>
+            </div>
+            <div class="drop-zone-text">
+              Trascina il file qui o <span style="color: var(--fedex-purple); text-decoration: underline;">clicca per sfogliare</span>
+            </div>
+            <div class="drop-zone-subtext">
+              Supporta formati Excel (.xlsx), CSV (.csv) e Manifest TNT (.pdf)
+            </div>
             <input type="file" id="file-input" class="hidden-file-input" accept=".xlsx,.csv,.pdf">
           </div>
         </section>
@@ -526,6 +536,9 @@
               <button class="btn btn-outline" id="btn-reset-direct">
                 <i data-lucide="refresh-cw"></i> Sincronizza da API FedEx
               </button>
+              <button class="btn btn-accent" id="btn-create-manifest-from-import" style="background: var(--fedex-purple-light); color: #fff; box-shadow: 0 4px 14px rgba(108, 35, 194, 0.25);">
+                <i data-lucide="file-text"></i> Crea Borderò di Presa in Carico
+              </button>
             </div>
           </div>
 
@@ -566,6 +579,231 @@
                 <!-- Rinvio log dinamico -->
               </tbody>
             </table>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- SEZIONE BORDERÒ: Distinta di Spedizione e Presa in Carico -->
+      <div id="section-manifest" class="page-section hidden">
+        
+        <!-- Header / Banner Info -->
+        <section class="dashboard-card" style="margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+              <div class="brand-logo" style="width: 48px; height: 48px; background: rgba(77, 20, 140, 0.1); display: flex; align-items: center; justify-content: center; border-radius: var(--border-radius-sm); margin: 0; flex-shrink: 0;">
+                <i data-lucide="file-text" style="color: var(--fedex-purple); width: 24px; height: 24px;"></i>
+              </div>
+              <div>
+                <h3 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">Borderò di Spedizione & Presa in Carico</h3>
+                <p style="margin: 4px 0 0; font-size: 0.88rem; color: var(--text-secondary);">Genera la distinta ufficiale per il ritiro colli con riepilogo ordini, tracking, pesi e riquadro firma autista.</p>
+              </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button type="button" class="btn btn-secondary" id="btn-manifest-view-history" style="display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="history"></i> Storico Borderò
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- CARD 1: Upload File o Scelta Sorgente -->
+        <section class="dashboard-card" id="manifest-input-card" style="margin-bottom: 24px;">
+          <div class="list-header" style="margin-bottom: 20px;">
+            <div class="list-summary">
+              <h4>1. Carica File Spedizioni o Seleziona Origine</h4>
+              <p>Carica il file Excel/CSV di FedEx, il PDF di TNT, oppure genera dai dati attuali.</p>
+            </div>
+          </div>
+
+          <!-- Drop zone per il borderò -->
+          <div class="drop-zone" id="manifest-drop-zone">
+            <input type="file" id="manifest-file-input" accept=".xlsx, .xls, .csv, .pdf" style="display: none;">
+            <div class="drop-zone-icon">
+              <i data-lucide="file-up"></i>
+            </div>
+            <div class="drop-zone-text">
+              Trascina qui il file di spedizione oppure <span style="color: var(--fedex-purple); text-decoration: underline;">clicca per selezionarlo</span>
+            </div>
+            <div class="drop-zone-subtext">
+              Formati supportati: Excel (.xlsx, .xls), CSV (.csv) o Manifest TNT (.pdf)
+            </div>
+            <div id="manifest-file-info" class="file-info hidden" style="margin-top: 14px;">
+              <span class="file-name" id="manifest-file-name" style="font-weight: 600; color: var(--fedex-purple);"></span>
+              <button type="button" class="btn-clear-file" id="manifest-btn-clear-file" title="Rimuovi file">
+                <i data-lucide="x"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Opzioni veloci e avvio elaborazione -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--card-border);">
+            <div class="form-group" style="margin: 0;">
+              <label for="manifest-carrier-select" style="font-weight: 600; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <i data-lucide="truck" style="width: 14px; height: 14px;"></i> Vettore / Corriere
+              </label>
+              <select id="manifest-carrier-select" style="width: 100%; height: 40px; border-radius: var(--border-radius-sm); border: 1px solid #cbd5e1; padding: 0 12px; font-family: inherit; font-size: 0.88rem; background: #fff;">
+                <option value="FedEx" selected>FedEx</option>
+                <option value="TNT">TNT</option>
+                <option value="FedEx Freight">FedEx Freight</option>
+                <option value="Altro">Altro Corriere</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="margin: 0;">
+              <label for="manifest-notes-input" style="font-weight: 600; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <i data-lucide="message-square" style="width: 14px; height: 14px;"></i> Note Ritiro (facoltative)
+              </label>
+              <input type="text" id="manifest-notes-input" placeholder="Es. Ritiro previsto ore 17:30 - Bancale 1" style="width: 100%; height: 40px; border-radius: var(--border-radius-sm); border: 1px solid #cbd5e1; padding: 0 12px; font-family: inherit; font-size: 0.88rem; background: #fff;">
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+            <button type="button" class="btn btn-primary" id="btn-process-manifest-file" style="display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 20px;">
+              <i data-lucide="arrow-right"></i> Elabora ed Anteprima Borderò
+            </button>
+          </div>
+        </section>
+
+        <!-- CARD 2: Anteprima Interattiva & Stampa/Download (hidden initially) -->
+        <section class="dashboard-card hidden" id="manifest-preview-card" style="margin-bottom: 24px;">
+          <div class="list-header" style="margin-bottom: 20px; border-bottom: 1px solid var(--card-border); padding-bottom: 16px;">
+            <div class="list-summary">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="badge" id="manifest-code-badge" style="background: var(--fedex-purple); color: #fff; font-size: 0.85rem; font-weight: 700; padding: 6px 12px;">BOR-20261012-001</span>
+                <h4 style="margin: 0;">2. Verifica Spedizioni e Stampa Borderò</h4>
+              </div>
+              <p style="margin-top: 4px;">Controlla le righe estratte. Puoi modificare il numero di colli o il peso prima di stampare o scaricare il documento.</p>
+            </div>
+
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-add-manifest-row">
+                <i data-lucide="plus"></i> Aggiungi Riga
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-cancel-manifest-preview">
+                <i data-lucide="x"></i> Chiudi Anteprima
+              </button>
+            </div>
+          </div>
+
+          <!-- Statistiche riassuntive -->
+          <div class="summary-cards" style="margin-bottom: 20px;">
+            <div class="summary-card total">
+              <div class="number" id="manifest-stat-count">0</div>
+              <div class="label">Spedizioni</div>
+            </div>
+            <div class="summary-card success">
+              <div class="number" id="manifest-stat-packages">0</div>
+              <div class="label">Colli Totali</div>
+            </div>
+            <div class="summary-card warning">
+              <div class="number" id="manifest-stat-weight">0,00 kg</div>
+              <div class="label">Peso Totale</div>
+            </div>
+            <div class="summary-card info">
+              <div class="number" id="manifest-stat-cod">0,00 €</div>
+              <div class="label">Contrassegni</div>
+            </div>
+          </div>
+
+          <!-- Tabella Spedizioni Modificabile -->
+          <div class="table-container" style="max-height: 480px; overflow-y: auto; border: 1px solid var(--card-border); border-radius: var(--border-radius-sm); background: #fff;">
+            <table class="orders-table" id="manifest-table" style="min-width: 100%;">
+              <thead>
+                <tr>
+                  <th width="40" class="text-center">N.</th>
+                  <th width="120">Riferimento</th>
+                  <th width="160">Tracking / AWB</th>
+                  <th width="200">Destinatario</th>
+                  <th width="130">Città</th>
+                  <th width="80" class="text-center">Colli</th>
+                  <th width="95" class="text-right">Peso (kg)</th>
+                  <th width="95" class="text-right">COD (€)</th>
+                  <th width="100">Servizio</th>
+                  <th width="50" class="text-center">Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="manifest-table-body">
+                <!-- Righe dinamiche editabili -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Azioni Finali di Stampa e Download -->
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--card-border);">
+            <div style="font-size: 0.85rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+              <i data-lucide="check-circle" style="color: var(--color-success); width: 16px; height: 16px;"></i>
+              <span>Il documento include le coordinate del mittente attivo e i box firme per il conducente.</span>
+            </div>
+
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+              <button type="button" class="btn btn-secondary" id="btn-print-manifest-browser" style="height: 44px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600;">
+                <i data-lucide="printer"></i> Stampa con il Browser
+              </button>
+              <button type="button" class="btn btn-primary" id="btn-download-manifest-pdf" style="height: 44px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: var(--fedex-purple); border-color: var(--fedex-purple); box-shadow: 0 4px 14px rgba(77, 20, 140, 0.25);">
+                <i data-lucide="file-down"></i> Scarica PDF Ufficiale
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- CARD 3: Storico Borderò Recenti -->
+        <section class="dashboard-card" id="manifest-history-card">
+          <div class="list-header" style="margin-bottom: 20px;">
+            <div class="list-summary">
+              <h4>Registro Borderò Emessi</h4>
+              <p>Elenco delle distinte generate in precedenza, con possibilità di ristampa e download.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-manifest-history">
+              <i data-lucide="refresh-cw"></i> Aggiorna
+            </button>
+          </div>
+
+          <div class="table-container">
+            <table class="orders-table" id="manifest-history-table" style="min-width: 100%;">
+              <thead>
+                <tr>
+                  <th width="150">Codice Borderò</th>
+                  <th width="160">Data e Ora</th>
+                  <th width="100">Vettore</th>
+                  <th width="100" class="text-center">Spedizioni</th>
+                  <th width="90" class="text-center">Colli</th>
+                  <th width="110" class="text-right">Peso Totale</th>
+                  <th width="180" class="text-right">Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="manifest-history-table-body">
+                <tr class="empty-row">
+                  <td colspan="7">
+                    <div class="empty-state">
+                      <i data-lucide="file-text"></i>
+                      <p>Nessun borderò emesso finora.</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Paginazione Registro Borderò Emessi -->
+          <div id="manifest-pagination" class="pagination-container hidden" style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div class="pagination-info" style="font-size: 0.88rem; color: var(--text-secondary); display: flex; align-items: center; gap: 14px;">
+              <span id="manifest-pagination-summary">Mostrati <strong>0-0</strong> di <strong>0</strong> borderò</span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <label for="manifest-page-size" style="font-size: 0.82rem; color: var(--text-muted);">Righe per pagina:</label>
+                <select id="manifest-page-size" style="padding: 4px 8px; font-size: 0.82rem; border-radius: var(--border-radius-sm); border: 1px solid var(--card-border); background: #ffffff; cursor: pointer;">
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                </select>
+              </div>
+            </div>
+            <div class="pagination-nav" id="manifest-pagination-nav" style="display: flex; align-items: center; gap: 6px;">
+              <!-- Bottoni paginazione dinamici -->
+            </div>
           </div>
         </section>
 
@@ -1269,6 +1507,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Container di stampa per il Borderò (visibile solo durante window.print) -->
+  <div id="manifest-print-area" class="print-only"></div>
 
   <script src="settings.js"></script>
   <script src="app.js"></script>

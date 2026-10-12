@@ -147,11 +147,21 @@ router.post('/parse-file', async (req, res) => {
     let referenceColumn = null;
     let trackingColumn = null;
 
+    if (cleanHeaders.includes('pieceTrackingNumber')) {
+      trackingColumn = 'pieceTrackingNumber';
+    } else if (cleanHeaders.includes('masterTrackingNumber')) {
+      trackingColumn = 'masterTrackingNumber';
+    }
+
+    if (cleanHeaders.includes('reference')) {
+      referenceColumn = 'reference';
+    }
+
     for (const header of cleanHeaders) {
       if (!referenceColumn && REF_REGEX.test(header)) {
         referenceColumn = header;
       }
-      if (!trackingColumn && TRACK_REGEX.test(header)) {
+      if (!trackingColumn && TRACK_REGEX.test(header) && !/returnTracking/i.test(header)) {
         trackingColumn = header;
       }
     }

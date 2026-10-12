@@ -15,21 +15,26 @@ router.get('/', (req, res) => {
   }
 });
 
-// GET /api/history/download/:fileName - Download saved Excel file
+// GET /api/history/download/:fileName - Download saved Excel or PDF file
 router.get('/download/:fileName', (req, res) => {
   try {
     const fileName = req.params.fileName;
     
     // Prevent directory traversal attacks
     const safeName = path.basename(fileName);
-    const filePath = path.join(historyStore.EXPORTS_DIR, safeName);
+    const exportPath = path.join(historyStore.EXPORTS_DIR, safeName);
+    const manifestPath = path.join(historyStore.MANIFESTS_DIR, safeName);
     
-    if (fs.existsSync(filePath)) {
+    if (fs.existsSync(exportPath)) {
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-      res.sendFile(filePath);
+      res.sendFile(exportPath);
+    } else if (fs.existsSync(manifestPath)) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      res.sendFile(manifestPath);
     } else {
-      res.status(404).json({ error: 'File Excel non trovato su questo server.' });
+      res.status(404).json({ error: 'File non trovato su questo server.' });
     }
   } catch (error) {
     console.error('Error downloading file:', error);

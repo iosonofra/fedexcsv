@@ -1278,9 +1278,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const menuShipmentSettings = document.getElementById('menu-shipment-settings');
   const menuHistory = document.getElementById('menu-history');
   const menuSettings = document.getElementById('menu-settings');
+  const menuManifest = document.getElementById('menu-manifest');
   
   const sectionOrders = document.getElementById('section-orders');
   const sectionImportTracking = document.getElementById('section-import-tracking');
+  const sectionManifest = document.getElementById('section-manifest');
   const sectionShipmentSettings = document.getElementById('section-shipment-settings');
   const sectionHistory = document.getElementById('section-history');
   const sectionSettings = document.getElementById('section-settings');
@@ -1291,12 +1293,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function deactivateAllTabs() {
     menuOrders.classList.remove('active');
     menuImportTracking.classList.remove('active');
+    if (menuManifest) menuManifest.classList.remove('active');
     if (menuShipmentSettings) menuShipmentSettings.classList.remove('active');
     if (menuHistory) menuHistory.classList.remove('active');
     if (menuSettings) menuSettings.classList.remove('active');
     
     sectionOrders.classList.add('hidden');
     sectionImportTracking.classList.add('hidden');
+    if (sectionManifest) sectionManifest.classList.add('hidden');
     if (sectionShipmentSettings) sectionShipmentSettings.classList.add('hidden');
     if (sectionHistory) sectionHistory.classList.add('hidden');
     if (sectionSettings) sectionSettings.classList.add('hidden');
@@ -1304,6 +1308,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (actionFooter) {
       actionFooter.classList.add('hidden');
     }
+  }
+
+  if (menuManifest && sectionManifest) {
+    menuManifest.addEventListener('click', () => {
+      deactivateAllTabs();
+      menuManifest.classList.add('active');
+      sectionManifest.classList.remove('hidden');
+      mainHeaderTitle.textContent = 'Borderò di Spedizione';
+      mainHeaderSubtitle.textContent = 'Genera, stampa e scarica la distinta di presa in carico dei colli affidati al corriere';
+      history.replaceState(null, null, '#manifest');
+      loadManifestHistory();
+      if (typeof lucide !== 'undefined' && lucide.createIcons) {
+        lucide.createIcons();
+      }
+    });
   }
 
   menuOrders.addEventListener('click', () => {
@@ -1500,6 +1519,8 @@ document.addEventListener('DOMContentLoaded', () => {
           window.switchTab(subHash, false);
         }
       }
+    } else if (hash === '#manifest') {
+      if (menuManifest) menuManifest.click();
     } else if (hash === '#history') {
       if (menuHistory) menuHistory.click();
     } else if (hash === '#shipment-settings') {
@@ -1512,10 +1533,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Handle URL hash on load and when hash/history changes
-  initRoutingFromHash();
-  window.addEventListener('hashchange', initRoutingFromHash);
-  window.addEventListener('popstate', initRoutingFromHash);
 
 
   // Gestione File Upload (Drag & Drop)
@@ -1526,10 +1543,18 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentFileName = '';
 
   if (dropZone) {
+    let trackingDragCounter = 0;
+
     dropZone.addEventListener('click', (e) => {
       if (e.target.id === 'file-input') return;
       const actualInput = document.getElementById('file-input');
       if (actualInput) actualInput.click();
+    });
+
+    dropZone.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      trackingDragCounter++;
+      dropZone.classList.add('dragover');
     });
 
     dropZone.addEventListener('dragover', (e) => {
@@ -1537,12 +1562,18 @@ document.addEventListener('DOMContentLoaded', () => {
       dropZone.classList.add('dragover');
     });
 
-    dropZone.addEventListener('dragleave', () => {
-      dropZone.classList.remove('dragover');
+    dropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      trackingDragCounter--;
+      if (trackingDragCounter <= 0) {
+        trackingDragCounter = 0;
+        dropZone.classList.remove('dragover');
+      }
     });
 
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
+      trackingDragCounter = 0;
       dropZone.classList.remove('dragover');
       if (e.dataTransfer.files.length > 0) {
         handleFileSelected(e.dataTransfer.files[0]);
@@ -2749,8 +2780,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const summaryError = document.getElementById('summary-error');
   const logTableBody = document.getElementById('log-table-body');
 
+  let lastImportSuccessItems = [];
+
   function renderResultsStep(result) {
     const { summary, details } = result;
+    
+    // Salva le spedizioni riuscite per il borderò
+    lastImportSuccessItems = details.success || [];
     
     // Aggiorna contatori
     summaryTotal.textContent = summary.totalProcessed;
@@ -3461,6 +3497,977 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // =========================================================================
+  // GESTIONE BORDERÒ DI SPEDIZIONE / DISTINTA DI RITIRO
+  // =========================================================================
+  const manifestDropZone = document.getElementById('manifest-drop-zone');
+  const manifestFileInput = document.getElementById('manifest-file-input');
+  const manifestFileInfo = document.getElementById('manifest-file-info');
+  const manifestFileNameEl = document.getElementById('manifest-file-name');
+  const manifestBtnClearFile = document.getElementById('manifest-btn-clear-file');
+  const manifestCarrierSelect = document.getElementById('manifest-carrier-select');
+  const manifestNotesInput = document.getElementById('manifest-notes-input');
+  const btnProcessManifestFile = document.getElementById('btn-process-manifest-file');
+  const btnManifestViewHistory = document.getElementById('btn-manifest-view-history');
+
+  const manifestInputCard = document.getElementById('manifest-input-card');
+  const manifestPreviewCard = document.getElementById('manifest-preview-card');
+  const manifestCodeBadge = document.getElementById('manifest-code-badge');
+  const manifestTableBody = document.getElementById('manifest-table-body');
+  const btnAddManifestRow = document.getElementById('btn-add-manifest-row');
+  const btnCancelManifestPreview = document.getElementById('btn-cancel-manifest-preview');
+  const btnPrintManifestBrowser = document.getElementById('btn-print-manifest-browser');
+  const btnDownloadManifestPdf = document.getElementById('btn-download-manifest-pdf');
+
+  const manifestStatCount = document.getElementById('manifest-stat-count');
+  const manifestStatPackages = document.getElementById('manifest-stat-packages');
+  const manifestStatWeight = document.getElementById('manifest-stat-weight');
+  const manifestStatCod = document.getElementById('manifest-stat-cod');
+
+  const manifestHistoryTableBody = document.getElementById('manifest-history-table-body');
+  const btnRefreshManifestHistory = document.getElementById('btn-refresh-manifest-history');
+  const manifestPrintArea = document.getElementById('manifest-print-area');
+
+  let manifestFileData = null;
+  let manifestFileName = '';
+  let currentManifestRows = [];
+  let currentManifestCode = '';
+  let currentManifestShipper = null;
+  let currentManifestCarrier = 'FedEx';
+
+  // Setup Drag & Drop File Upload per Borderò
+  if (manifestDropZone) {
+    let manifestDragCounter = 0;
+
+    manifestDropZone.addEventListener('click', (e) => {
+      if (e.target.id === 'manifest-file-input' || e.target.closest('#manifest-btn-clear-file')) return;
+      if (manifestFileInput) manifestFileInput.click();
+    });
+
+    manifestDropZone.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      manifestDragCounter++;
+      manifestDropZone.classList.add('dragover');
+    });
+
+    manifestDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      manifestDropZone.classList.add('dragover');
+    });
+
+    manifestDropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      manifestDragCounter--;
+      if (manifestDragCounter <= 0) {
+        manifestDragCounter = 0;
+        manifestDropZone.classList.remove('dragover');
+      }
+    });
+
+    manifestDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      manifestDragCounter = 0;
+      manifestDropZone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleManifestFileSelect(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
+  if (manifestFileInput) {
+    manifestFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleManifestFileSelect(e.target.files[0]);
+      }
+    });
+  }
+
+  function handleManifestFileSelect(file) {
+    const validExtensions = ['xlsx', 'xls', 'csv', 'pdf'];
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!validExtensions.includes(ext)) {
+      showToast('Formato non supportato', 'Seleziona un file Excel (.xlsx, .xls), CSV (.csv) o un Manifest TNT (.pdf).', 'error');
+      return;
+    }
+
+    manifestFileName = file.name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64String = e.target.result.split(',')[1];
+      manifestFileData = base64String;
+
+      if (manifestFileNameEl) manifestFileNameEl.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+      if (manifestFileInfo) manifestFileInfo.classList.remove('hidden');
+      if (manifestDropZone) manifestDropZone.classList.add('file-selected');
+
+      if (ext === 'pdf' && manifestCarrierSelect) {
+        manifestCarrierSelect.value = 'TNT';
+      }
+      showToast('File caricato', `File "${file.name}" pronto per l'elaborazione.`, 'info');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  if (manifestBtnClearFile) {
+    manifestBtnClearFile.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearManifestFile();
+    });
+  }
+
+  function clearManifestFile() {
+    manifestFileData = null;
+    manifestFileName = '';
+    if (manifestFileInput) manifestFileInput.value = '';
+    if (manifestFileInfo) manifestFileInfo.classList.add('hidden');
+    if (manifestFileNameEl) manifestFileNameEl.textContent = '';
+    if (manifestDropZone) manifestDropZone.classList.remove('file-selected');
+  }
+
+  // Elabora file per il Borderò
+  if (btnProcessManifestFile) {
+    btnProcessManifestFile.addEventListener('click', async () => {
+      if (!manifestFileData) {
+        showToast('Nessun file selezionato', 'Carica un file Excel, CSV o PDF prima di procedere.', 'warning');
+        return;
+      }
+
+      await processManifestInput({
+        fileData: manifestFileData,
+        fileName: manifestFileName,
+        carrier: manifestCarrierSelect ? manifestCarrierSelect.value : 'FedEx',
+        notes: manifestNotesInput ? manifestNotesInput.value : ''
+      });
+    });
+  }
+
+  // Scorciatoia rapida da Import Tracking
+  const btnCreateManifestFromImport = document.getElementById('btn-create-manifest-from-import');
+  if (btnCreateManifestFromImport) {
+    btnCreateManifestFromImport.addEventListener('click', async () => {
+      if (!lastImportSuccessItems || lastImportSuccessItems.length === 0) {
+        showToast('Nessuna spedizione', 'Non ci sono spedizioni riuscite disponibili per il borderò.', 'warning');
+        return;
+      }
+
+      const shipments = lastImportSuccessItems.map(item => {
+        let trk = item.tracking || item.trackingNumber || '';
+        if (!trk && item.message) {
+          const m = item.message.match(/tracking\s+([A-Z0-9]+)/i);
+          if (m) trk = m[1];
+        }
+        return {
+          reference: item.reference || '',
+          tracking: trk,
+          recipient: '',
+          city: '',
+          packages: 1,
+          weight: 0,
+          cod: 0,
+          service: 'FedEx'
+        };
+      });
+
+      if (menuManifest) menuManifest.click();
+
+      await processManifestInput({
+        shipments,
+        carrier: 'FedEx',
+        notes: ''
+      });
+    });
+  }
+
+  // Chiamata backend per estrarre e normalizzare le spedizioni
+  async function processManifestInput(payload) {
+    try {
+      const originalText = btnProcessManifestFile ? btnProcessManifestFile.innerHTML : '';
+      if (btnProcessManifestFile) {
+        btnProcessManifestFile.disabled = true;
+        btnProcessManifestFile.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Elaborazione...';
+      }
+
+      const res = await fetch('/api/manifest/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Errore durante la lettura del file di spedizione.');
+      }
+
+      const data = await res.json();
+      currentManifestRows = data.shipments || [];
+      currentManifestCode = data.manifestCode;
+      currentManifestShipper = data.shipper;
+      currentManifestCarrier = data.carrier || payload.carrier || 'FedEx';
+
+      if (manifestCodeBadge) manifestCodeBadge.textContent = currentManifestCode;
+      if (manifestCarrierSelect) manifestCarrierSelect.value = currentManifestCarrier;
+
+      // Mostra pannello anteprima
+      if (manifestPreviewCard) manifestPreviewCard.classList.remove('hidden');
+      renderManifestTable();
+      recalculateManifestStats();
+
+      // Scroll morbido verso l'anteprima
+      manifestPreviewCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      showToast('Borderò preparato', `Rilevate ${currentManifestRows.length} spedizioni. Verifica e modifica i colli se necessario.`, 'success');
+
+    } catch (err) {
+      console.error('Errore elaborazione borderò:', err);
+      showToast('Errore', err.message, 'error');
+    } finally {
+      if (btnProcessManifestFile) {
+        btnProcessManifestFile.disabled = false;
+        btnProcessManifestFile.innerHTML = '<i data-lucide="arrow-right"></i> Elabora ed Anteprima Borderò';
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      }
+    }
+  }
+
+  // Renderizza la tabella modificabile delle spedizioni del borderò
+  function renderManifestTable() {
+    if (!manifestTableBody) return;
+    manifestTableBody.innerHTML = '';
+
+    if (currentManifestRows.length === 0) {
+      manifestTableBody.innerHTML = `
+        <tr class="empty-row">
+          <td colspan="10">
+            <div class="empty-state">
+              <i data-lucide="package-x"></i>
+              <p>Nessuna spedizione presente nel borderò.</p>
+            </div>
+          </td>
+        </tr>
+      `;
+      if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      return;
+    }
+
+    currentManifestRows.forEach((row, idx) => {
+      const tr = document.createElement('tr');
+      tr.setAttribute('data-index', idx);
+      tr.innerHTML = `
+        <td class="text-center font-semibold" style="color:var(--text-secondary);">${idx + 1}</td>
+        <td>
+          <input type="text" class="manifest-row-ref font-mono font-semibold" value="${escapeHTML(row.reference || '')}" placeholder="Rif. Ordine" style="color:var(--fedex-purple);">
+        </td>
+        <td>
+          <input type="text" class="manifest-row-track font-mono font-semibold" value="${escapeHTML(row.tracking || '')}" placeholder="Tracking AWB" style="color:var(--color-accent);">
+        </td>
+        <td>
+          <input type="text" class="manifest-row-recipient" value="${escapeHTML(row.recipient || '')}" placeholder="Nome Cliente / Destinatario">
+        </td>
+        <td>
+          <input type="text" class="manifest-row-city" value="${escapeHTML(row.city || '')}" placeholder="Città / Località">
+        </td>
+        <td class="text-center">
+          <input type="number" class="manifest-row-packages text-center font-bold" min="1" value="${row.packages || 1}">
+        </td>
+        <td class="text-right">
+          <input type="number" class="manifest-row-weight text-right" step="0.1" min="0" value="${row.weight !== undefined ? row.weight : 0}">
+        </td>
+        <td class="text-right">
+          <input type="number" class="manifest-row-cod text-right font-semibold" step="0.01" min="0" value="${row.cod !== undefined ? row.cod : 0}" style="${Number(row.cod) > 0 ? 'color:#b91c1c;' : ''}">
+        </td>
+        <td>
+          <input type="text" class="manifest-row-service" value="${escapeHTML(row.service || currentManifestCarrier || '')}" placeholder="Servizio">
+        </td>
+        <td class="text-center">
+          <button type="button" class="manifest-row-btn-delete" title="Rimuovi riga" data-index="${idx}">
+            <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+          </button>
+        </td>
+      `;
+
+      manifestTableBody.appendChild(tr);
+    });
+
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+      lucide.createIcons();
+    }
+  }
+
+  // Event delegation per modifiche e cancellazioni in tabella
+  if (manifestTableBody) {
+    manifestTableBody.addEventListener('input', (e) => {
+      syncManifestRowsFromDOM();
+      recalculateManifestStats();
+    });
+
+    manifestTableBody.addEventListener('click', (e) => {
+      const btnDelete = e.target.closest('.manifest-row-btn-delete');
+      if (btnDelete) {
+        const idx = parseInt(btnDelete.getAttribute('data-index'), 10);
+        if (!isNaN(idx) && idx >= 0 && idx < currentManifestRows.length) {
+          syncManifestRowsFromDOM();
+          currentManifestRows.splice(idx, 1);
+          renderManifestTable();
+          recalculateManifestStats();
+        }
+      }
+    });
+  }
+
+  // Sincronizza i dati dai campi input del DOM nell'array currentManifestRows
+  function syncManifestRowsFromDOM() {
+    if (!manifestTableBody) return;
+    const trs = manifestTableBody.querySelectorAll('tr[data-index]');
+    currentManifestRows = Array.from(trs).map(tr => {
+      const idx = parseInt(tr.getAttribute('data-index'), 10);
+      const prevRow = currentManifestRows[idx] || {};
+      return {
+        ...prevRow,
+        reference: tr.querySelector('.manifest-row-ref')?.value?.trim() || '',
+        tracking: tr.querySelector('.manifest-row-track')?.value?.trim() || '',
+        recipient: tr.querySelector('.manifest-row-recipient')?.value?.trim() || '',
+        city: tr.querySelector('.manifest-row-city')?.value?.trim() || '',
+        packages: parseInt(tr.querySelector('.manifest-row-packages')?.value || 1, 10) || 1,
+        weight: parseFloat(tr.querySelector('.manifest-row-weight')?.value || 0) || 0,
+        cod: parseFloat(tr.querySelector('.manifest-row-cod')?.value || 0) || 0,
+        service: tr.querySelector('.manifest-row-service')?.value?.trim() || currentManifestCarrier
+      };
+    });
+  }
+
+  // Ricalcola le statistiche riassuntive
+  function recalculateManifestStats() {
+    let totCount = currentManifestRows.length;
+    let totPkgs = 0;
+    let totWeight = 0;
+    let totCod = 0;
+
+    currentManifestRows.forEach(r => {
+      totPkgs += Number(r.packages) || 1;
+      totWeight += Number(r.weight) || 0;
+      totCod += Number(r.cod) || 0;
+    });
+
+    if (manifestStatCount) manifestStatCount.textContent = totCount;
+    if (manifestStatPackages) manifestStatPackages.textContent = totPkgs;
+    if (manifestStatWeight) manifestStatWeight.textContent = `${totWeight.toFixed(2).replace('.', ',')} kg`;
+    if (manifestStatCod) manifestStatCod.textContent = `${totCod.toFixed(2).replace('.', ',')} €`;
+  }
+
+  // Aggiungi riga manuale
+  if (btnAddManifestRow) {
+    btnAddManifestRow.addEventListener('click', () => {
+      syncManifestRowsFromDOM();
+      currentManifestRows.push({
+        reference: '',
+        tracking: '',
+        recipient: '',
+        city: '',
+        packages: 1,
+        weight: 0,
+        cod: 0,
+        service: currentManifestCarrier
+      });
+      renderManifestTable();
+      recalculateManifestStats();
+      const lastRefInput = manifestTableBody.querySelector('tr:last-child .manifest-row-ref');
+      if (lastRefInput) lastRefInput.focus();
+    });
+  }
+
+  // Chiudi anteprima
+  if (btnCancelManifestPreview) {
+    btnCancelManifestPreview.addEventListener('click', () => {
+      if (manifestPreviewCard) manifestPreviewCard.classList.add('hidden');
+      clearManifestFile();
+      if (manifestInputCard) manifestInputCard.scrollIntoView({ behavior: 'smooth' });
+    });
+  }
+
+  // Stampa con il Browser (A4 print layout matching official PDF structure)
+  if (btnPrintManifestBrowser) {
+    btnPrintManifestBrowser.addEventListener('click', () => {
+      syncManifestRowsFromDOM();
+      if (currentManifestRows.length === 0) {
+        showToast('Attenzione', 'Nessuna spedizione presente nel borderò da stampare.', 'warning');
+        return;
+      }
+
+      // Archivia in background nello storico per sincronizzare il Registro Borderò Emessi
+      try {
+        fetch('/api/manifest/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            manifestCode: currentManifestCode,
+            carrier: currentManifestCarrier,
+            shipper: currentManifestShipper,
+            shipments: currentManifestRows,
+            notes: manifestNotesInput ? manifestNotesInput.value.trim() : ''
+          })
+        }).then(() => {
+          if (typeof loadManifestHistory === 'function') loadManifestHistory();
+        }).catch(() => {});
+      } catch (e) {}
+
+      printManifestInBrowser();
+    });
+  }
+
+  function printManifestInBrowser() {
+    if (!manifestPrintArea) return;
+
+    // Helper formatting matching manifestPdf.js
+    const formatWeight = num => {
+      if (num === null || num === undefined || isNaN(num)) return '0,000';
+      return Number(num).toFixed(3).replace('.', ',');
+    };
+
+    const formatCod = val => {
+      const num = Number(val);
+      if (!num || isNaN(num) || num <= 0) return '';
+      return Number(num).toFixed(2).replace('.', ',');
+    };
+
+    const formatDateDot = (date = new Date()) => {
+      const d = new Date(date);
+      const pad = n => String(n).padStart(2, '0');
+      return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+    };
+
+    const formatServiceName = (service, carrier = 'FedEx') => {
+      if (!service) return 'Express';
+      const s = String(service).trim();
+      if (/REGIONAL_ECONOMY/i.test(s)) return 'Regional Economy';
+      if (/REGIONAL/i.test(s)) return 'Regional';
+      if (/INTERNATIONAL_PRIORITY/i.test(s)) return 'Intl Priority';
+      if (/INTERNATIONAL_ECONOMY/i.test(s)) return 'Intl Economy';
+      if (/PRIORITY_OVERNIGHT/i.test(s)) return 'Priority';
+      if (/STANDARD_OVERNIGHT/i.test(s)) return 'Standard';
+      if (/2_DAY/i.test(s)) return '2 Day';
+      if (/EXPRESS_SAVER/i.test(s)) return 'Express Saver';
+      if (/ECONOMY_FREIGHT/i.test(s)) return 'Economy Freight';
+      if (/GROUND/i.test(s)) return 'Ground';
+      if (/EXPRESS/i.test(s)) return 'Express';
+      return s.replace(/^FEDEX_/i, '').replace(/_/g, ' ');
+    };
+
+    const isTNT = String(currentManifestCarrier || '').toUpperCase().includes('TNT');
+    const carrierNameUpper = isTNT ? 'TNT' : 'FEDEX';
+
+    // Scope detection (DOMESTIC vs INTERNATIONAL)
+    const hasInternational = currentManifestRows.some(s => {
+      const country = (s.country || s.recipientCountry || '').toUpperCase();
+      const city = (s.city || '').toUpperCase();
+      return (country && country !== 'IT' && country !== 'ITA' && country !== 'ITALIA') ||
+             (/\([A-Z]{2}\)/.test(city) && !/\(IT\)/i.test(city));
+    });
+    const allInternational = currentManifestRows.length > 0 && currentManifestRows.every(s => {
+      const country = (s.country || s.recipientCountry || '').toUpperCase();
+      const city = (s.city || '').toUpperCase();
+      return (country && country !== 'IT' && country !== 'ITA' && country !== 'ITALIA') ||
+             (/\([A-Z]{2}\)/.test(city) && !/\(IT\)/i.test(city));
+    });
+    const scopeType = allInternational ? 'INTERNATIONAL' : (hasInternational ? 'DOMESTIC / INTL' : 'DOMESTIC');
+
+    let totalPieces = 0;
+    let totalWeight = 0;
+    let totalCod = 0;
+    currentManifestRows.forEach(r => {
+      totalPieces += Number(r.packages) || 1;
+      totalWeight += Number(r.weight) || 0;
+      totalCod += Number(r.cod) || 0;
+    });
+
+    const now = new Date();
+    const shipper = currentManifestShipper || {};
+    const senderAccount = shipper.accountNumber || (shipper.fedex && shipper.fedex.accountNumber) || '';
+    const senderName = (shipper.company || shipper.nameVal || shipper.name || 'MITTENTE NON SPECIFICATO').toUpperCase();
+    const senderAddressLine1 = (shipper.address1 || '').toLowerCase();
+    const cityPart = (shipper.city || '').toUpperCase();
+    const statePart = (shipper.state || '').toUpperCase();
+    const zipPart = (shipper.zip || '');
+    const countryPart = (shipper.country || 'IT').toUpperCase();
+    const senderAddressLine2 = [cityPart, statePart, zipPart, countryPart].filter(Boolean).join(',  ');
+
+    const notes = manifestNotesInput ? manifestNotesInput.value.trim() : '';
+
+    const logoHtml = isTNT ? `
+      <div class="manifest-tnt-logo">
+        <span>T</span><span>N</span><span>T</span>
+      </div>
+    ` : `
+      <div class="manifest-fedex-logo">
+        <span class="logo-fed">Fed</span><span class="logo-ex">Ex</span>
+      </div>
+    `;
+
+    const rowsHtml = currentManifestRows.map(row => {
+      const receiverName = (row.recipient || row.customerName || '').toUpperCase();
+      const serviceName = formatServiceName(row.service, currentManifestCarrier);
+
+      let cityDisplay = (row.city || '').toUpperCase();
+      const countryVal = (row.country || row.recipientCountry || '').toUpperCase();
+      if (countryVal && countryVal !== 'IT' && countryVal !== 'ITA' && countryVal !== 'ITALIA') {
+        if (!cityDisplay.includes(`(${countryVal})`) && !cityDisplay.endsWith(` ${countryVal}`)) {
+          cityDisplay = cityDisplay ? `${cityDisplay} (${countryVal})` : countryVal;
+        }
+      }
+
+      const codVal = formatCod(row.cod);
+
+      return `
+        <tr>
+          <td class="col-con-nr">${escapeHTML(String(row.tracking || '-'))}</td>
+          <td class="col-pieces text-right">${escapeHTML(String(row.packages || 1))}</td>
+          <td class="col-weight text-right">${escapeHTML(formatWeight(row.weight))}</td>
+          <td class="col-ref">${escapeHTML(String(row.reference || '-').toUpperCase())}</td>
+          <td class="col-receiver">${escapeHTML(receiverName)}</td>
+          <td class="col-city">${escapeHTML(cityDisplay)}</td>
+          <td class="col-service">${escapeHTML(serviceName)}</td>
+          <td class="col-cod text-right">${escapeHTML(codVal)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    manifestPrintArea.innerHTML = `
+      <div class="manifest-print-container">
+        <!-- TOP HEADER -->
+        <div class="manifest-print-header">
+          <div class="manifest-print-logo">
+            ${logoHtml}
+          </div>
+          <div class="manifest-print-title-area">
+            <div class="manifest-print-main-title">COLLECTION MANIFEST (SUMMARY) - 1</div>
+            <div class="manifest-print-sub-title">${escapeHTML(carrierNameUpper)} ${escapeHTML(scopeType)}</div>
+          </div>
+          <div class="manifest-print-scope">
+            ${escapeHTML(scopeType)}
+          </div>
+        </div>
+
+        <!-- SENDER & MANIFEST DETAILS TABLE -->
+        <table class="manifest-print-meta-table">
+          <tr>
+            <td class="manifest-lbl" style="width:110px;">Sender Account:</td>
+            <td class="manifest-val" style="width:300px;">${escapeHTML(senderAccount)}</td>
+            <td class="manifest-lbl text-right" style="width:70px;">Page:</td>
+            <td class="manifest-val text-right" style="width:50px;">1</td>
+          </tr>
+          <tr>
+            <td class="manifest-lbl">Sender Name:</td>
+            <td class="manifest-val bold">${escapeHTML(senderName)}</td>
+            <td class="manifest-lbl text-right">Date:</td>
+            <td class="manifest-val text-right">${formatDateDot(now)}</td>
+          </tr>
+          <tr>
+            <td class="manifest-lbl" style="vertical-align:top;">& Address</td>
+            <td class="manifest-val bold" style="vertical-align:top;">
+              ${escapeHTML(senderAddressLine1)}<br>
+              ${escapeHTML(senderAddressLine2)}
+            </td>
+            <td class="manifest-lbl text-right" style="vertical-align:top;">Doc:</td>
+            <td class="manifest-val text-right" style="vertical-align:top;">${escapeHTML(currentManifestCode)}</td>
+          </tr>
+        </table>
+
+        <!-- DIVIDER LINE -->
+        <div class="manifest-print-divider"></div>
+
+        <!-- MAIN TABLE -->
+        <table class="manifest-print-table">
+          <thead>
+            <tr>
+              <th class="col-con-nr">Con Nr</th>
+              <th class="col-pieces text-right">No. of<br>Pieces</th>
+              <th class="col-weight text-right">Weight<br>(kgs)</th>
+              <th class="col-ref">Shipper Ref.</th>
+              <th class="col-receiver">Receiver</th>
+              <th class="col-city">City</th>
+              <th class="col-service">Destination Service</th>
+              <th class="col-cod text-right">C.O.D.</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <!-- TOTALS SECTION -->
+        <div class="manifest-print-divider"></div>
+        <div class="manifest-print-totals-section">
+          <div class="manifest-totals-heading">Account &nbsp;${escapeHTML(senderAccount || '00000000')}&nbsp; Totals:</div>
+          <table class="manifest-totals-table">
+            <tr>
+              <td class="col-con-nr pl-indent">${currentManifestRows.length}</td>
+              <td class="col-pieces text-right">${totalPieces}</td>
+              <td class="col-weight text-right">${formatWeight(totalWeight)}</td>
+              <td class="col-ref-blank"></td>
+              <td class="col-receiver-blank"></td>
+              <td class="col-city-blank"></td>
+              <td class="col-service-blank"></td>
+              <td class="col-cod text-right">${totalCod > 0 ? formatCod(totalCod) : ''}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="manifest-print-divider"></div>
+        <div class="manifest-print-totals-section">
+          <div class="manifest-totals-heading">Grand Totals:</div>
+          <table class="manifest-totals-table">
+            <tr>
+              <td class="col-con-nr pl-indent">${currentManifestRows.length}</td>
+              <td class="col-pieces text-right">${totalPieces}</td>
+              <td class="col-weight text-right">${formatWeight(totalWeight)}</td>
+              <td class="col-ref-blank"></td>
+              <td class="col-receiver-blank"></td>
+              <td class="col-city-blank"></td>
+              <td class="col-service-blank"></td>
+              <td class="col-cod text-right">${totalCod > 0 ? formatCod(totalCod) : ''}</td>
+            </tr>
+          </table>
+        </div>
+        <div class="manifest-print-divider"></div>
+
+        <!-- NOTES (IF ANY) -->
+        ${notes ? `<div class="manifest-print-notes">Note Ritiro: ${escapeHTML(notes)}</div>` : ''}
+
+        <!-- SIGNATURES SECTION -->
+        <div class="manifest-print-signatures">
+          <div class="manifest-print-sig-row">
+            <span class="manifest-sig-title">Sender's Signature</span>
+            <span class="manifest-sig-rule">_________________________</span>
+            <span class="manifest-sig-date">Date: &nbsp;______/______/_____</span>
+          </div>
+
+          <div class="manifest-print-sig-row" style="margin-top:28px;">
+            <span class="manifest-sig-title">Received by ${escapeHTML(carrierNameUpper)}</span>
+            <span class="manifest-sig-rule">_________________________</span>
+            <span class="manifest-sig-date">Date: &nbsp;______/______/_____ &nbsp;&nbsp;&nbsp; Time: &nbsp;_______:______ &nbsp;hrs</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    window.print();
+  }
+
+  // Genera e scarica il file PDF ufficiale dal Backend
+  if (btnDownloadManifestPdf) {
+    btnDownloadManifestPdf.addEventListener('click', async () => {
+      syncManifestRowsFromDOM();
+      if (currentManifestRows.length === 0) {
+        showToast('Attenzione', 'Nessuna spedizione presente nel borderò.', 'warning');
+        return;
+      }
+
+      btnDownloadManifestPdf.disabled = true;
+      const originalText = btnDownloadManifestPdf.innerHTML;
+      btnDownloadManifestPdf.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> Generazione PDF...';
+
+      try {
+        const payload = {
+          manifestCode: currentManifestCode,
+          carrier: currentManifestCarrier,
+          shipper: currentManifestShipper,
+          shipments: currentManifestRows,
+          notes: manifestNotesInput ? manifestNotesInput.value.trim() : ''
+        };
+
+        const res = await fetch('/api/manifest/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Impossibile creare il file PDF.');
+        }
+
+        const data = await res.json();
+        
+        // Avvia download del file PDF
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.download = data.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showToast('PDF Generato', `Il Borderò "${data.manifestCode}" è stato creato e scaricato con successo!`, 'success');
+
+        // Aggiorna tabella storico borderò
+        loadManifestHistory();
+
+      } catch (err) {
+        console.error('Errore creazione PDF borderò:', err);
+        showToast('Errore', err.message, 'error');
+      } finally {
+        btnDownloadManifestPdf.disabled = false;
+        btnDownloadManifestPdf.innerHTML = originalText;
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      }
+    });
+  }
+
+  // =========================================================================
+  // PAGINAZIONE REGISTRO BORDERÒ EMESSI
+  // =========================================================================
+  let allManifestData = [];
+  let manifestCurrentPage = 1;
+  let manifestPageSize = parseInt(localStorage.getItem('manifest_page_size'), 10) || 10;
+
+  // Bind Manifest Page Size Selector
+  const manifestPageSizeSelect = document.getElementById('manifest-page-size');
+  if (manifestPageSizeSelect) {
+    manifestPageSizeSelect.value = String(manifestPageSize);
+    manifestPageSizeSelect.addEventListener('change', (e) => {
+      const newSize = parseInt(e.target.value, 10) || 10;
+      manifestPageSize = newSize;
+      localStorage.setItem('manifest_page_size', newSize);
+      manifestCurrentPage = 1;
+      renderManifestHistoryPage();
+    });
+  }
+
+  // Renderizza controlli di navigazione paginazione per i borderò
+  function renderManifestHistoryPagination(totalPages, totalItems, startIdx, endIdx) {
+    const paginationContainer = document.getElementById('manifest-pagination');
+    const summaryEl = document.getElementById('manifest-pagination-summary');
+    const navEl = document.getElementById('manifest-pagination-nav');
+    const pageSizeSelect = document.getElementById('manifest-page-size');
+
+    if (!paginationContainer || !summaryEl || !navEl) return;
+
+    if (totalItems === 0) {
+      paginationContainer.classList.add('hidden');
+      return;
+    }
+
+    paginationContainer.classList.remove('hidden');
+
+    if (pageSizeSelect) {
+      pageSizeSelect.value = String(manifestPageSize);
+    }
+
+    const showingFrom = startIdx + 1;
+    const showingTo = Math.min(endIdx, totalItems);
+    summaryEl.innerHTML = `Mostrati <strong>${showingFrom}–${showingTo}</strong> di <strong>${totalItems}</strong> borderò`;
+
+    navEl.innerHTML = '';
+
+    // First button («)
+    const btnFirst = document.createElement('button');
+    btnFirst.className = 'pagination-btn';
+    btnFirst.title = 'Prima pagina';
+    btnFirst.innerHTML = '&laquo;';
+    btnFirst.disabled = manifestCurrentPage <= 1;
+    btnFirst.addEventListener('click', () => {
+      if (manifestCurrentPage > 1) {
+        manifestCurrentPage = 1;
+        renderManifestHistoryPage();
+      }
+    });
+    navEl.appendChild(btnFirst);
+
+    // Prev button (‹)
+    const btnPrev = document.createElement('button');
+    btnPrev.className = 'pagination-btn';
+    btnPrev.title = 'Pagina precedente';
+    btnPrev.innerHTML = '&lsaquo;';
+    btnPrev.disabled = manifestCurrentPage <= 1;
+    btnPrev.addEventListener('click', () => {
+      if (manifestCurrentPage > 1) {
+        manifestCurrentPage--;
+        renderManifestHistoryPage();
+      }
+    });
+    navEl.appendChild(btnPrev);
+
+    // Numbered & ellipsis buttons
+    const pages = getPaginationPages(manifestCurrentPage, totalPages);
+    pages.forEach(p => {
+      if (p === '...') {
+        const span = document.createElement('span');
+        span.className = 'pagination-ellipsis';
+        span.textContent = '…';
+        navEl.appendChild(span);
+      } else {
+        const btnPage = document.createElement('button');
+        btnPage.className = `pagination-btn ${p === manifestCurrentPage ? 'active' : ''}`;
+        btnPage.textContent = p;
+        if (p === manifestCurrentPage) {
+          btnPage.disabled = true;
+        } else {
+          btnPage.addEventListener('click', () => {
+            manifestCurrentPage = p;
+            renderManifestHistoryPage();
+          });
+        }
+        navEl.appendChild(btnPage);
+      }
+    });
+
+    // Next button (›)
+    const btnNext = document.createElement('button');
+    btnNext.className = 'pagination-btn';
+    btnNext.title = 'Pagina successiva';
+    btnNext.innerHTML = '&rsaquo;';
+    btnNext.disabled = manifestCurrentPage >= totalPages;
+    btnNext.addEventListener('click', () => {
+      if (manifestCurrentPage < totalPages) {
+        manifestCurrentPage++;
+        renderManifestHistoryPage();
+      }
+    });
+    navEl.appendChild(btnNext);
+
+    // Last button (»)
+    const btnLast = document.createElement('button');
+    btnLast.className = 'pagination-btn';
+    btnLast.title = 'Ultima pagina';
+    btnLast.innerHTML = '&raquo;';
+    btnLast.disabled = manifestCurrentPage >= totalPages;
+    btnLast.addEventListener('click', () => {
+      if (manifestCurrentPage < totalPages) {
+        manifestCurrentPage = totalPages;
+        renderManifestHistoryPage();
+      }
+    });
+    navEl.appendChild(btnLast);
+  }
+
+  // Renderizza la pagina corrente dei borderò
+  function renderManifestHistoryPage() {
+    const tableBody = manifestHistoryTableBody || document.getElementById('manifest-history-table-body');
+    if (!tableBody) return;
+    tableBody.innerHTML = '';
+
+    const totalItems = allManifestData.length;
+    if (totalItems === 0) {
+      tableBody.innerHTML = `
+        <tr class="empty-row">
+          <td colspan="7">
+            <div class="empty-state">
+              <i data-lucide="file-text"></i>
+              <p>Nessun borderò emesso finora.</p>
+            </div>
+          </td>
+        </tr>
+      `;
+      const paginationContainer = document.getElementById('manifest-pagination');
+      if (paginationContainer) paginationContainer.classList.add('hidden');
+      if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      return;
+    }
+
+    const totalPages = Math.ceil(totalItems / manifestPageSize) || 1;
+    if (manifestCurrentPage > totalPages) manifestCurrentPage = totalPages;
+    if (manifestCurrentPage < 1) manifestCurrentPage = 1;
+
+    const startIdx = (manifestCurrentPage - 1) * manifestPageSize;
+    const endIdx = startIdx + manifestPageSize;
+    const pageItems = allManifestData.slice(startIdx, endIdx);
+
+    pageItems.forEach(m => {
+      const d = new Date(m.timestamp || Date.now());
+      const pad = n => String(n).padStart(2, '0');
+      const dateStr = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong style="color:var(--fedex-purple);">${escapeHTML(m.manifestCode || '-')}</strong></td>
+        <td style="color:var(--text-secondary); font-size:0.85rem;">${dateStr}</td>
+        <td><span class="badge badge-purple">${escapeHTML(m.carrier || 'FedEx')}</span></td>
+        <td class="text-center font-semibold">${m.shipmentsCount || '-'}</td>
+        <td class="text-center font-bold" style="color:var(--text-primary);">${m.totalPackages || 1}</td>
+        <td class="text-right" style="font-size:0.85rem;">${m.totalWeight ? `${Number(m.totalWeight).toFixed(2).replace('.', ',')} kg` : '-'}</td>
+        <td class="text-right" style="white-space:nowrap;">
+          <a href="/api/manifest/download/${m.manifestCode}?inline=true" target="_blank" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:4px; text-decoration:none;" title="Visualizza / Stampa PDF">
+            <i data-lucide="printer" style="width:13px;height:13px;"></i> Stampa
+          </a>
+          <a href="/api/manifest/download/${m.manifestCode}" class="btn btn-primary btn-sm" style="display:inline-flex; align-items:center; gap:4px; text-decoration:none; margin-left:6px;" download title="Scarica file PDF">
+            <i data-lucide="download" style="width:13px;height:13px;"></i> PDF
+          </a>
+          <button type="button" class="btn btn-outline-danger btn-sm btn-delete-manifest" data-id="${m.id}" style="margin-left:6px; padding:4px 8px;" title="Elimina dallo storico">
+            <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+          </button>
+        </td>
+      `;
+
+      tableBody.appendChild(tr);
+    });
+
+    renderManifestHistoryPagination(totalPages, totalItems, startIdx, endIdx);
+
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+      lucide.createIcons();
+    }
+  }
+
+  // Carica storico dei Borderò emessi
+  async function loadManifestHistory() {
+    const tableBody = manifestHistoryTableBody || document.getElementById('manifest-history-table-body');
+    if (!tableBody) return;
+    try {
+      const res = await fetch('/api/manifest/history');
+      if (!res.ok) return;
+
+      const manifests = await res.json();
+      allManifestData = Array.isArray(manifests) ? manifests : [];
+      renderManifestHistoryPage();
+
+    } catch (err) {
+      console.error('Errore caricamento storico borderò:', err);
+    }
+  }
+
+  // Elimina singolo borderò da storico
+  if (manifestHistoryTableBody) {
+    manifestHistoryTableBody.addEventListener('click', async (e) => {
+      const btnDel = e.target.closest('.btn-delete-manifest');
+      if (!btnDel) return;
+
+      const id = btnDel.getAttribute('data-id');
+      if (!id) return;
+
+      const confirmed = await showCustomConfirm(
+        'Elimina Borderò',
+        'Sei sicuro di voler eliminare questo borderò dallo storico? Il file PDF fisico archiviato verrà rimosso permanentemente.'
+      );
+      if (!confirmed) return;
+
+      try {
+        const res = await fetch(`/api/history/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Eliminato', 'Borderò rimosso con successo.', 'success');
+          loadManifestHistory();
+        } else {
+          throw new Error('Errore nella rimozione.');
+        }
+      } catch (err) {
+        showToast('Errore', err.message, 'error');
+      }
+    });
+  }
+
+  if (btnRefreshManifestHistory) {
+    btnRefreshManifestHistory.addEventListener('click', () => {
+      loadManifestHistory();
+      showToast('Aggiornato', 'Storico borderò aggiornato.', 'info');
+    });
+  }
+
+  if (btnManifestViewHistory) {
+    btnManifestViewHistory.addEventListener('click', () => {
+      const histCard = document.getElementById('manifest-history-card');
+      if (histCard) {
+        histCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        loadManifestHistory();
+      }
+    });
+  }
+
   // Utility Escaping HTML
   function escapeHTML(str) {
     if (!str) return '';
@@ -3474,5 +4481,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }[tag] || tag)
     );
   }
+  // Handle URL hash on load and when hash/history changes (at the end of DOMContentLoaded)
+  initRoutingFromHash();
+  window.addEventListener('hashchange', initRoutingFromHash);
+  window.addEventListener('popstate', initRoutingFromHash);
 });
 

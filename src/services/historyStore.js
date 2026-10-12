@@ -3,6 +3,7 @@ const path = require('path');
 
 const HISTORY_FILE = path.join(__dirname, '../../data/history.json');
 const EXPORTS_DIR = path.join(__dirname, '../../data/exports');
+const MANIFESTS_DIR = path.join(__dirname, '../../data/manifests');
 
 let cachedHistory = null;
 
@@ -13,6 +14,9 @@ function ensureDirs() {
   }
   if (!fs.existsSync(EXPORTS_DIR)) {
     fs.mkdirSync(EXPORTS_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(MANIFESTS_DIR)) {
+    fs.mkdirSync(MANIFESTS_DIR, { recursive: true });
   }
 }
 
@@ -66,7 +70,7 @@ function deleteEntry(id) {
 
   const entry = history[index];
   
-  // If it's an export and has a file name, delete the physical file
+  // If it's an export or manifest and has a file name, delete the physical file
   if (entry.type === 'export' && entry.fileName) {
     const filePath = path.join(EXPORTS_DIR, entry.fileName);
     try {
@@ -75,6 +79,15 @@ function deleteEntry(id) {
       }
     } catch (err) {
       console.error(`Error deleting physical file ${entry.fileName}:`, err.message);
+    }
+  } else if (entry.type === 'manifest' && entry.fileName) {
+    const filePath = path.join(MANIFESTS_DIR, entry.fileName);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      console.error(`Error deleting physical manifest ${entry.fileName}:`, err.message);
     }
   }
 
@@ -94,6 +107,16 @@ function clearHistory() {
     }
   } catch (err) {
     console.error('Error clearing exports directory:', err.message);
+  }
+
+  // Delete all files in manifests directory
+  try {
+    const files = fs.readdirSync(MANIFESTS_DIR);
+    for (const file of files) {
+      fs.unlinkSync(path.join(MANIFESTS_DIR, file));
+    }
+  } catch (err) {
+    console.error('Error clearing manifests directory:', err.message);
   }
 
   // Save empty history
@@ -139,6 +162,7 @@ module.exports = {
   deleteEntry,
   clearHistory,
   EXPORTS_DIR,
+  MANIFESTS_DIR,
   restoreHistory
 };
 

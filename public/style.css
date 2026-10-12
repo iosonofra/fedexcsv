@@ -1841,44 +1841,302 @@ input[type="checkbox"] {
   margin-bottom: 16px;
   line-height: 1.4;
 }
+/* ==========================================================================
+   Interactive File Drop Zones (Borderò, Tracking Import, Backup)
+   ========================================================================== */
+
+.drop-zone,
+.upload-zone,
 .file-drop-zone {
-  border: 2px dashed var(--card-border);
-  border-radius: var(--border-radius-sm);
-  padding: 24px;
+  position: relative;
+  min-height: 180px;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  padding: 36px 24px;
   text-align: center;
   cursor: pointer;
-  transition: var(--transition-smooth);
-  background: var(--card-bg);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.02);
+  user-select: none;
+  overflow: hidden;
 }
-.file-drop-zone:hover, .file-drop-zone.dragover {
-  border-color: var(--fedex-purple);
-  background: rgba(77, 20, 140, 0.02);
+
+/* Evita flickering durante dragover sui figli */
+.drop-zone > *:not(.hidden-file-input):not(#manifest-file-info):not(#manifest-file-input),
+.upload-zone > *:not(.hidden-file-input):not(#file-input),
+.file-drop-zone > *:not(input) {
+  pointer-events: none;
 }
-.file-drop-zone i, .file-drop-zone svg {
+
+#manifest-file-info,
+.btn-clear-file {
+  pointer-events: auto !important;
+}
+
+/* Icon Container */
+.drop-zone .drop-zone-icon,
+.upload-zone .drop-zone-icon,
+.upload-zone > i,
+.upload-zone > svg,
+.file-drop-zone i,
+.file-drop-zone svg {
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  background: rgba(77, 20, 140, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  color: var(--fedex-purple);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.drop-zone .drop-zone-icon i,
+.drop-zone .drop-zone-icon svg,
+.upload-zone .drop-zone-icon i,
+.upload-zone .drop-zone-icon svg,
+.upload-zone > i,
+.upload-zone > svg {
   width: 32px;
   height: 32px;
-  color: var(--text-muted);
-  transition: var(--transition-smooth);
+  color: var(--fedex-purple);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.3s ease;
 }
+
+/* Text styles */
+.drop-zone .drop-zone-text,
+.upload-zone h3,
+.upload-zone .drop-zone-text,
+.file-drop-zone .file-drop-zone-text {
+  font-weight: 600;
+  font-size: 1.02rem;
+  color: var(--text-primary);
+  margin-top: 4px;
+  transition: color 0.25s ease, transform 0.25s ease;
+}
+
+.drop-zone .drop-zone-subtext,
+.upload-zone p,
+.upload-zone .drop-zone-subtext,
+.file-drop-zone .file-drop-zone-subtext {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  transition: color 0.25s ease;
+}
+
+/* --------------------------------------------------------------------------
+   Hover State (Mouse Hover)
+   -------------------------------------------------------------------------- */
+.drop-zone:hover,
+.upload-zone:hover,
+.file-drop-zone:hover {
+  border-color: var(--fedex-purple) !important;
+  border-style: dashed !important;
+  background: linear-gradient(180deg, #ffffff 0%, rgba(77, 20, 140, 0.045) 100%) !important;
+  transform: translateY(-3px) !important;
+  box-shadow: 0 10px 28px rgba(77, 20, 140, 0.12), 0 0 0 1px rgba(77, 20, 140, 0.08) !important;
+}
+
+.drop-zone:hover .drop-zone-icon,
+.upload-zone:hover .drop-zone-icon,
+.upload-zone:hover > i,
+.upload-zone:hover > svg,
+.file-drop-zone:hover i,
+.file-drop-zone:hover svg {
+  background: var(--fedex-purple) !important;
+  transform: translateY(-4px) scale(1.1) !important;
+  box-shadow: 0 8px 20px rgba(77, 20, 140, 0.3) !important;
+  color: #ffffff !important;
+}
+
+.drop-zone:hover .drop-zone-icon i,
+.drop-zone:hover .drop-zone-icon svg,
+.upload-zone:hover .drop-zone-icon i,
+.upload-zone:hover .drop-zone-icon svg,
+.upload-zone:hover > i,
+.upload-zone:hover > svg {
+  color: #ffffff !important;
+}
+
+.drop-zone:hover .drop-zone-text,
+.upload-zone:hover h3,
+.upload-zone:hover .drop-zone-text,
+.file-drop-zone:hover .file-drop-zone-text {
+  color: var(--fedex-purple) !important;
+}
+
+/* --------------------------------------------------------------------------
+   Dragover State (File Dragged Over Dropzone)
+   -------------------------------------------------------------------------- */
+@keyframes dropzone-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(77, 20, 140, 0.18), 0 12px 32px rgba(77, 20, 140, 0.18);
+    border-color: var(--fedex-purple);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(77, 20, 140, 0.32), 0 16px 42px rgba(77, 20, 140, 0.25);
+    border-color: var(--fedex-orange);
+  }
+}
+
+@keyframes dropzone-icon-float {
+  0%, 100% {
+    transform: translateY(-4px) scale(1.15);
+  }
+  50% {
+    transform: translateY(-10px) scale(1.22);
+  }
+}
+
+.drop-zone.dragover,
+.upload-zone.dragover,
+.file-drop-zone.dragover {
+  border-color: var(--fedex-purple) !important;
+  border-style: dashed !important;
+  border-width: 2.5px !important;
+  background: linear-gradient(180deg, rgba(77, 20, 140, 0.06) 0%, rgba(77, 20, 140, 0.12) 100%) !important;
+  transform: scale(1.018) translateY(-4px) !important;
+  animation: dropzone-pulse-glow 1.4s infinite ease-in-out !important;
+}
+
+.drop-zone.dragover .drop-zone-icon,
+.upload-zone.dragover .drop-zone-icon,
+.upload-zone.dragover > i,
+.upload-zone.dragover > svg,
+.file-drop-zone.dragover i,
+.file-drop-zone.dragover svg {
+  background: var(--fedex-purple) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 26px rgba(77, 20, 140, 0.42) !important;
+  animation: dropzone-icon-float 1.2s infinite ease-in-out !important;
+}
+
+.drop-zone.dragover .drop-zone-icon i,
+.drop-zone.dragover .drop-zone-icon svg,
+.upload-zone.dragover .drop-zone-icon i,
+.upload-zone.dragover .drop-zone-icon svg,
+.upload-zone.dragover > i,
+.upload-zone.dragover > svg {
+  color: #ffffff !important;
+}
+
+.drop-zone.dragover .drop-zone-text,
+.upload-zone.dragover h3,
+.upload-zone.dragover .drop-zone-text,
+.file-drop-zone.dragover .file-drop-zone-text {
+  color: var(--fedex-purple) !important;
+  font-weight: 700 !important;
+  transform: translateY(-1px);
+}
+
+.drop-zone.dragover .drop-zone-subtext,
+.upload-zone.dragover p,
+.upload-zone.dragover .drop-zone-subtext,
+.file-drop-zone.dragover .file-drop-zone-subtext {
+  color: var(--fedex-purple-light) !important;
+}
+
+.drop-zone.dragover::after,
+.upload-zone.dragover::after {
+  content: '✨ Rilascia il file per caricarlo';
+  display: inline-block;
+  margin-top: 10px;
+  background: var(--fedex-purple);
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 18px;
+  border-radius: 20px;
+  box-shadow: 0 4px 14px rgba(77, 20, 140, 0.35);
+  animation: file-badge-appear 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* --------------------------------------------------------------------------
+   File Selected / Success State
+   -------------------------------------------------------------------------- */
+.drop-zone.file-selected,
+.upload-zone.file-selected,
 .file-drop-zone.file-selected {
-  border-color: var(--color-success);
-  background: rgba(16, 185, 129, 0.02);
+  border-color: var(--color-success) !important;
+  border-style: solid !important;
+  background: linear-gradient(180deg, #ffffff 0%, rgba(16, 185, 129, 0.04) 100%) !important;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.08) !important;
 }
-.file-drop-zone.file-selected i, .file-drop-zone.file-selected svg {
-  color: var(--color-success);
+
+.drop-zone.file-selected .drop-zone-icon,
+.upload-zone.file-selected .drop-zone-icon,
+.upload-zone.file-selected > i,
+.upload-zone.file-selected > svg,
+.file-drop-zone.file-selected i,
+.file-drop-zone.file-selected svg {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: var(--color-success) !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15) !important;
 }
-.file-drop-zone-text {
-  font-size: 0.88rem;
+
+.drop-zone.file-selected .drop-zone-icon i,
+.drop-zone.file-selected .drop-zone-icon svg,
+.upload-zone.file-selected .drop-zone-icon i,
+.upload-zone.file-selected .drop-zone-icon svg,
+.upload-zone.file-selected > i,
+.upload-zone.file-selected > svg {
+  color: var(--color-success) !important;
+}
+
+/* File info badge within drop zone */
+.file-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(77, 20, 140, 0.06);
+  border: 1px solid rgba(77, 20, 140, 0.15);
+  border-radius: 30px;
+  padding: 6px 14px;
+  animation: file-badge-appear 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.file-info.hidden {
+  display: none !important;
+}
+
+@keyframes file-badge-appear {
+  from { opacity: 0; transform: scale(0.9) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.btn-clear-file {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.08);
   color: var(--text-secondary);
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
 }
-.file-drop-zone-subtext {
-  font-size: 0.78rem;
-  color: var(--text-muted);
+
+.btn-clear-file:hover {
+  background: var(--color-error);
+  color: #ffffff;
+  transform: scale(1.1);
+}
+
+.btn-clear-file i,
+.btn-clear-file svg {
+  width: 13px !important;
+  height: 13px !important;
 }
 .alert-banner {
   background: rgba(245, 158, 11, 0.08);
@@ -1935,15 +2193,16 @@ input[type="checkbox"] {
 }
 
 .pagination-btn.active {
-  background: var(--fedex-purple);
-  border-color: var(--fedex-purple);
-  color: #ffffff;
+  background: var(--fedex-purple) !important;
+  border-color: var(--fedex-purple) !important;
+  color: #ffffff !important;
   font-weight: 600;
   box-shadow: 0 2px 6px rgba(77, 20, 140, 0.25);
   cursor: default;
+  opacity: 1 !important;
 }
 
-.pagination-btn:disabled {
+.pagination-btn:disabled:not(.active) {
   opacity: 0.4;
   cursor: not-allowed;
   background: #f8fafc;
@@ -1958,3 +2217,308 @@ input[type="checkbox"] {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
+
+/* ==========================================================================
+   Borderò di Spedizione (Manifest) Styles
+   ========================================================================== */
+
+#manifest-table input[type="number"],
+#manifest-table input[type="text"] {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 0.82rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--text-primary);
+  font-family: inherit;
+  transition: var(--transition-smooth);
+}
+
+#manifest-table input[type="number"]:focus,
+#manifest-table input[type="text"]:focus {
+  border-color: var(--fedex-purple-light);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(108, 35, 194, 0.15);
+}
+
+.manifest-row-btn-delete {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-smooth);
+}
+
+.manifest-row-btn-delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Hidden by default on screen */
+.print-only {
+  display: none;
+}
+
+/* ==========================================================================
+   Print Layout (@media print)
+   ========================================================================== */
+/* ==========================================================================
+   Print Layout (@media print) - TNT & FedEx Collection Manifest Replica
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 8mm 10mm 8mm;
+  }
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  #manifest-print-area,
+  #manifest-print-area * {
+    visibility: visible !important;
+  }
+
+  #manifest-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    display: block !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 7.5pt !important;
+    line-height: 1.25 !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 2mm 4mm !important;
+  }
+
+  .manifest-print-container {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .manifest-print-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+  }
+
+  .manifest-fedex-logo {
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-weight: bold;
+    font-size: 24pt;
+    line-height: 1;
+    letter-spacing: -1px;
+  }
+  .manifest-fedex-logo .logo-fed {
+    color: #4D148C !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .manifest-fedex-logo .logo-ex {
+    color: #FF6200 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .manifest-tnt-logo {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .manifest-tnt-logo span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #000000 !important;
+    color: #ffffff !important;
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-weight: bold;
+    font-size: 10pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .manifest-print-title-area {
+    text-align: center;
+  }
+  .manifest-print-main-title {
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-weight: bold;
+    font-size: 8.5pt;
+    color: #000000;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .manifest-print-sub-title {
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-weight: bold;
+    font-size: 6.5pt;
+    color: #000000;
+    margin-top: 3px;
+    text-transform: uppercase;
+  }
+
+  .manifest-print-scope {
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-weight: bold;
+    font-size: 8.5pt;
+    color: #000000;
+    text-align: right;
+  }
+
+  .manifest-print-meta-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+    font-size: 6pt;
+    line-height: 1.35;
+  }
+  .manifest-print-meta-table td {
+    padding: 1px 2px;
+    border: none !important;
+    color: #000000;
+  }
+  .manifest-print-meta-table .manifest-lbl {
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-weight: bold;
+  }
+  .manifest-print-meta-table .manifest-val {
+    font-family: 'Courier New', Courier, monospace !important;
+  }
+  .manifest-print-meta-table .manifest-val.bold {
+    font-weight: bold;
+  }
+
+  .manifest-print-divider {
+    width: 100%;
+    height: 1px;
+    background: #000000 !important;
+    margin: 4px 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .manifest-print-table,
+  .manifest-totals-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 6pt;
+    line-height: 1.25;
+    table-layout: fixed;
+  }
+
+  .manifest-print-table thead th {
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-weight: bold;
+    font-size: 6pt;
+    color: #000000 !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 2px 2px;
+    vertical-align: bottom;
+    text-align: left;
+  }
+
+  .manifest-print-table tbody td,
+  .manifest-totals-table td {
+    padding: 2px 2px;
+    border: none !important;
+    color: #000000 !important;
+    background: transparent !important;
+    vertical-align: top;
+    text-align: left;
+    word-break: break-word;
+  }
+
+  /* Precise column percentages matching PDFKit coordinates */
+  .col-con-nr { width: 12%; }
+  .col-pieces { width: 5%; }
+  .col-weight { width: 8%; }
+  .col-ref    { width: 13%; }
+  .col-receiver { width: 23%; }
+  .col-city   { width: 14%; }
+  .col-service { width: 13%; }
+  .col-cod    { width: 12%; }
+
+  .col-ref-blank      { width: 13%; }
+  .col-receiver-blank { width: 23%; }
+  .col-city-blank     { width: 14%; }
+  .col-service-blank  { width: 13%; }
+
+  .pl-indent {
+    padding-left: 18px !important;
+  }
+
+  .text-right {
+    text-align: right !important;
+  }
+
+  .manifest-totals-heading {
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 6pt;
+    color: #000000;
+    margin: 2px 0 1px 0;
+  }
+
+  .manifest-print-notes {
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 6pt;
+    color: #000000;
+    margin: 6px 0;
+  }
+
+  .manifest-print-signatures {
+    margin-top: 22px;
+    page-break-inside: avoid;
+  }
+
+  .manifest-print-sig-row {
+    display: flex;
+    align-items: center;
+    font-size: 6pt;
+  }
+
+  .manifest-sig-title {
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-weight: bold;
+    width: 135px;
+    display: inline-block;
+  }
+
+  .manifest-sig-rule {
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-size: 8.5pt;
+    display: inline-block;
+    width: 175px;
+  }
+
+  .manifest-sig-date {
+    font-family: Helvetica, Arial, sans-serif !important;
+    font-weight: bold;
+    margin-left: 25px;
+    display: inline-block;
+  }
+}
+
