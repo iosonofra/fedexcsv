@@ -492,7 +492,8 @@ async function runBackgroundDirectSync(importId, ordersToSync, psClient, fetchOn
     for (let i = 0; i < ordersToSync.length; i++) {
       if (!activeImports.has(importId)) break;
 
-      const { id: orderId, reference } = ordersToSync[i];
+      const currentOrder = ordersToSync[i] || {};
+      const { id: orderId, reference } = currentOrder;
       const rowNum = i + 1; // display sequence
       
       try {
@@ -527,9 +528,9 @@ async function runBackgroundDirectSync(importId, ordersToSync, psClient, fetchOn
           displayCity = `${displayCity} (${fedexCountry})`;
         }
 
-        const resolvedCity = displayCity || (orders[i] && (orders[i].delivery_city || orders[i].deliveryCity)) || '';
-        const resolvedRecipient = (fedexData && fedexData.recipientName) || (orders[i] && (orders[i].customer_name || orders[i].customerName)) || '';
-        const resolvedWeight = (fedexData && fedexData.weight > 0) ? fedexData.weight : ((orders[i] && orders[i].weight) || 0);
+        const resolvedCity = displayCity || currentOrder.delivery_city || currentOrder.deliveryCity || '';
+        const resolvedRecipient = (fedexData && fedexData.recipientName) || currentOrder.customer_name || currentOrder.customerName || '';
+        const resolvedWeight = (fedexData && fedexData.weight > 0) ? fedexData.weight : (currentOrder.weight || 0);
         const resolvedPackages = (fedexData && fedexData.packages) || 1;
         const resolvedService = (fedexData && fedexData.service) || 'FedEx';
 
@@ -546,7 +547,7 @@ async function runBackgroundDirectSync(importId, ordersToSync, psClient, fetchOn
             weight: resolvedWeight,
             packages: resolvedPackages,
             service: resolvedService,
-            cod: (orders[i] && orders[i].cod) || 0,
+            cod: currentOrder.cod || 0,
             message: `Tracking trovato su FedEx: ${trackingNumber}`
           });
         } else {
@@ -578,7 +579,7 @@ async function runBackgroundDirectSync(importId, ordersToSync, psClient, fetchOn
             weight: resolvedWeight,
             packages: resolvedPackages,
             service: resolvedService,
-            cod: (orders[i] && orders[i].cod) || 0,
+            cod: currentOrder.cod || 0,
             message: `Tracking ${trackingNumber} importato con successo per l'ordine ID ${orderId}.`
           });
         }
