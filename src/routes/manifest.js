@@ -9,6 +9,8 @@ const settingsStore = require('../services/settingsStore');
 const historyStore = require('../services/historyStore');
 const { generateManifestPdf } = require('../services/manifestPdf');
 const tntParser = require('../services/tntParser');
+const config = require('../config');
+const fedexApi = require('../services/fedexApi');
 
 /**
  * Helper to generate a sequential manifest code: BOR-YYYYMMDD-XXX
@@ -257,6 +259,9 @@ router.post('/parse', async (req, res) => {
       return res.status(400).json({ error: 'Non è stata trovata alcuna spedizione valida nei dati forniti.' });
     }
 
+    // Auto-enrich missing recipient, city, weight, and cod from PrestaShop
+    parsedShipments = await enrichShipmentsFromPrestaShop(parsedShipments);
+
     const manifestCode = generateManifestCode();
 
     res.json({
@@ -399,5 +404,186 @@ router.get('/history', (req, res) => {
     res.status(500).json({ error: 'Errore nel recupero dello storico dei borderò.' });
   }
 });
+
+/**
+ * POST /api/manifest/enrich
+ * Completes or refreshes missing recipient, city, weight, or COD from PrestaShop for a list of shipments
+ */
+router.post('/enrich', async (req, res) => {
+  try {
+    const { shipments, forceRefresh } = req.body;
+    if (!Array.isArray(shipments) || shipments.length === 0) {
+      return res.status(400).json({ error: 'Nessuna riga di spedizione fornita.' });
+    }
+    const enriched = await enrichShipmentsFromPrestaShop(shipments, !!forceRefresh);
+    res.json({
+      success: true,
+      shipments: enriched,
+      totalCount: enriched.length
+    });
+  } catch (error) {
+    console.error('Error in POST /api/manifest/enrich:', error);
+    res.status(500).json({ error: error.message || 'Errore durante l\'arricchimento dei dati da PrestaShop.' });
+  }
+});
+
+/**
+ * Helper to auto-enrich missing recipient, city, weight, and COD from PrestaShop & FedEx API
+ */
+async function enrichShipmentsFromPrestaShop(shipments, forceRefresh = false) {
+  try {
+    const psClient = settingsStore.getPrestaShopClient();
+    const settings = settingsStore.getSettings();
+    const defaultWeight = parseFloat((settings.package && settings.package.weight) || (config.package && config.package.weight)) || 1;
+
+    // 1. Interroga direttamente FedEx Track API in batch per recuperare peso reale, colli e città
+    const trackingsToLookup = shipments
+      .filter(s => s.tracking && (forceRefresh || !s.weight || Number(s.weight) <= 0 || !s.city))
+      .map(s => s.tracking);
+
+    let fedexDetailsMap = {};
+    if (trackingsToLookup.length > 0 && settings.fedex && settings.fedex.clientId) {
+      try {
+        fedexDetailsMap = await fedexApi.getShipmentsDetailsByTrackingNumbers(trackingsToLookup, settings.fedex);
+      } catch (fErr) {
+        console.warn('FedEx batch details lookup warning:', fErr.message);
+      }
+    }
+
+    const addressCache = {};
+    const customerCache = {};
+    const countryCache = {};
+
+    for (let i = 0; i < shipments.length; i++) {
+      const s = shipments[i];
+      const ref = (s.reference || '').trim();
+
+      // Applica prima il peso reale, colli e città restituiti da FedEx API
+      const fedexInfo = fedexDetailsMap[s.tracking];
+      if (fedexInfo) {
+        if (fedexInfo.weight > 0) {
+          s.weight = fedexInfo.weight; // Peso reale da FedEx
+        }
+        if (fedexInfo.packages) {
+          s.packages = fedexInfo.packages;
+        }
+        if (fedexInfo.service) {
+          s.service = fedexInfo.service;
+        }
+        if ((!s.city || forceRefresh) && fedexInfo.city) {
+          const fCity = fedexInfo.city.replace(/\b\w/g, c => c.toUpperCase());
+          if (fedexInfo.country && fedexInfo.country !== 'IT' && fedexInfo.country !== 'ITA') {
+            s.city = `${fCity} (${fedexInfo.country})`;
+            s.country = fedexInfo.country;
+          } else {
+            s.city = fCity;
+            s.country = 'IT';
+          }
+        }
+      }
+
+      if (!ref) continue;
+
+      const hasRecipient = s.recipient && s.recipient.trim().length > 0;
+      const hasCity = s.city && s.city.trim().length > 0;
+      const hasWeight = s.weight !== undefined && s.weight !== null && Number(s.weight) > 0;
+      const hasCod = s.cod !== undefined && s.cod !== null && Number(s.cod) > 0;
+
+      // Skip PrestaShop lookup se destinatario, città e peso sono già completi e non è force refresh
+      if (!forceRefresh && hasRecipient && hasCity && hasWeight) {
+        continue;
+      }
+
+      try {
+        const orders = await psClient.getOrdersByReference(ref);
+        if (orders && orders.length > 0) {
+          const order = orders.find(o => (o.reference || '').trim().toUpperCase() === ref.toUpperCase()) || orders[0];
+          if (order) {
+            // 1. Recipient and City from Delivery Address
+            let address = null;
+            if (order.id_address_delivery && order.id_address_delivery !== '0') {
+              if (addressCache[order.id_address_delivery]) {
+                address = addressCache[order.id_address_delivery];
+              } else {
+                address = await psClient.getAddress(order.id_address_delivery);
+                if (address) addressCache[order.id_address_delivery] = address;
+              }
+            }
+
+            // Customer fallback if address has no name
+            let customer = null;
+            if ((!address || (!address.firstname && !address.lastname)) && order.id_customer && order.id_customer !== '0') {
+              if (customerCache[order.id_customer]) {
+                customer = customerCache[order.id_customer];
+              } else {
+                customer = await psClient.getCustomer(order.id_customer);
+                if (customer) customerCache[order.id_customer] = customer;
+              }
+            }
+
+            // Populate Recipient
+            if (!hasRecipient || forceRefresh) {
+              const nameFromAddr = address ? `${address.firstname || ''} ${address.lastname || ''}`.trim() : '';
+              const nameFromCust = customer ? `${customer.firstname || ''} ${customer.lastname || ''}`.trim() : '';
+              const fullName = nameFromAddr || nameFromCust;
+              if (fullName) {
+                s.recipient = fullName;
+              }
+            }
+
+            // Populate City and Country
+            if (!hasCity || forceRefresh) {
+              if (address && address.city) {
+                const formattedCity = address.city.replace(/\b\w/g, c => c.toUpperCase());
+                let countryIso = '';
+                if (address.id_country && address.id_country !== '0') {
+                  if (countryCache[address.id_country]) {
+                    countryIso = countryCache[address.id_country];
+                  } else {
+                    const country = await psClient.getCountry(address.id_country);
+                    if (country && country.iso_code) {
+                      countryIso = country.iso_code.toUpperCase();
+                      countryCache[address.id_country] = countryIso;
+                    }
+                  }
+                }
+
+                if (countryIso && countryIso !== 'IT' && countryIso !== 'ITA') {
+                  s.city = `${formattedCity} (${countryIso})`;
+                  s.country = countryIso;
+                } else {
+                  s.city = formattedCity;
+                  s.country = 'IT';
+                }
+              }
+            }
+
+            // Populate Weight
+            if (!hasWeight || forceRefresh) {
+              const orderWeight = parseFloat(order.total_weight);
+              s.weight = (orderWeight > 0) ? orderWeight : defaultWeight;
+            }
+
+            // Populate COD / Contrassegno
+            if (!hasCod || forceRefresh) {
+              const isCod = /contrassegno|cash.*deliv|\bcod\b/i.test(order.payment || '') || 
+                            /contrassegno|\bcod\b/i.test(order.module || '');
+              if (isCod) {
+                s.cod = parseFloat(order.total_paid_tax_incl || order.total_paid) || 0;
+              } else if (!hasCod) {
+                s.cod = 0;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`Could not enrich reference "${ref}" from PrestaShop:`, err.message);
+      }
+    }
+  } catch (globalErr) {
+    console.error('Error in enrichShipmentsFromPrestaShop:', globalErr.message);
+  }
+  return shipments;
+}
 
 module.exports = router;

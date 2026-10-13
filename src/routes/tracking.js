@@ -6,6 +6,7 @@ const settingsStore = require('../services/settingsStore');
 const historyStore = require('../services/historyStore');
 const fedexApi = require('../services/fedexApi');
 const tntParser = require('../services/tntParser');
+const config = require('../config');
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -498,13 +499,15 @@ async function runBackgroundDirectSync(importId, ordersToSync, psClient, fetchOn
         await delay(150); // FedEx REST API rate limit protection
         
         // Call FedEx API (with mock fallback for testing in Sandbox)
-        let trackingNumber = null;
+        let fedexData = null;
         if (fedexSettings.useSandbox && (reference === 'TLTNGIVSG' || reference === 'SMSRWNBZC' || reference.startsWith('TEST'))) {
-          trackingNumber = '794828472819';
+          fedexData = { trackingNumber: '794828472819', city: 'MILANO', country: 'IT', weight: 1, packages: 1, service: 'FedEx' };
         } else {
-          trackingNumber = await fedexApi.getTrackingByReference(reference, fedexSettings);
+          fedexData = await fedexApi.getTrackingByReference(reference, fedexSettings);
         }
         
+        const trackingNumber = typeof fedexData === 'string' ? fedexData : (fedexData && fedexData.trackingNumber);
+
         if (!trackingNumber) {
           job.warningCount++;
           job.results.warnings.push({
@@ -516,6 +519,20 @@ async function runBackgroundDirectSync(importId, ordersToSync, psClient, fetchOn
           continue;
         }
 
+        // Merge FedEx direct API data with PrestaShop order data
+        const fedexCity = (fedexData && fedexData.city) ? fedexData.city.replace(/\b\w/g, c => c.toUpperCase()) : '';
+        const fedexCountry = fedexData && fedexData.country;
+        let displayCity = fedexCity;
+        if (displayCity && fedexCountry && fedexCountry !== 'IT' && fedexCountry !== 'ITA') {
+          displayCity = `${displayCity} (${fedexCountry})`;
+        }
+
+        const resolvedCity = displayCity || (orders[i] && (orders[i].delivery_city || orders[i].deliveryCity)) || '';
+        const resolvedRecipient = (fedexData && fedexData.recipientName) || (orders[i] && (orders[i].customer_name || orders[i].customerName)) || '';
+        const resolvedWeight = (fedexData && fedexData.weight > 0) ? fedexData.weight : ((orders[i] && orders[i].weight) || 0);
+        const resolvedPackages = (fedexData && fedexData.packages) || 1;
+        const resolvedService = (fedexData && fedexData.service) || 'FedEx';
+
         if (fetchOnly) {
           // Just collect the tracking code without updating PrestaShop
           job.successCount++;
@@ -524,6 +541,12 @@ async function runBackgroundDirectSync(importId, ordersToSync, psClient, fetchOn
             reference,
             orderId,
             trackingNumber,
+            customerName: resolvedRecipient,
+            deliveryCity: resolvedCity,
+            weight: resolvedWeight,
+            packages: resolvedPackages,
+            service: resolvedService,
+            cod: (orders[i] && orders[i].cod) || 0,
             message: `Tracking trovato su FedEx: ${trackingNumber}`
           });
         } else {
@@ -550,6 +573,12 @@ async function runBackgroundDirectSync(importId, ordersToSync, psClient, fetchOn
             reference,
             orderId,
             trackingNumber,
+            customerName: resolvedRecipient,
+            deliveryCity: resolvedCity,
+            weight: resolvedWeight,
+            packages: resolvedPackages,
+            service: resolvedService,
+            cod: (orders[i] && orders[i].cod) || 0,
             message: `Tracking ${trackingNumber} importato con successo per l'ordine ID ${orderId}.`
           });
         }
@@ -653,6 +682,10 @@ async function runBackgroundPrestaShopImport(importId, ordersToImport, psClient,
           reference,
           orderId,
           trackingNumber,
+          customerName: (ordersToImport[i] && (ordersToImport[i].customer_name || ordersToImport[i].customerName)) || '',
+          deliveryCity: (ordersToImport[i] && (ordersToImport[i].delivery_city || ordersToImport[i].deliveryCity)) || '',
+          weight: (ordersToImport[i] && ordersToImport[i].weight) || 0,
+          cod: (ordersToImport[i] && ordersToImport[i].cod) || 0,
           carrierId: targetCarrierId,
           message: successMsg
         });
@@ -760,12 +793,21 @@ router.get('/pending-sync', async (req, res) => {
                 }
               }
               
+              // Resolve COD and weight
+              const isCod = /contrassegno|cash.*deliv|\bcod\b/i.test(order.payment || '') || /contrassegno|\bcod\b/i.test(order.module || '');
+              const codAmount = isCod ? (parseFloat(order.total_paid_tax_incl || order.total_paid) || 0) : 0;
+              const orderWeight = parseFloat(order.total_weight);
+              const defaultPkgWeight = (config.package && parseFloat(config.package.weight)) || 1;
+              const weight = orderWeight > 0 ? orderWeight : defaultPkgWeight;
+              
               pendingOrders.push({
                 id: parseInt(order.id, 10),
                 reference: order.reference,
                 date_add: order.date_add,
                 customer_name: customerName,
                 delivery_city: deliveryCity,
+                weight: weight,
+                cod: codAmount,
                 current_state: parseInt(order.current_state, 10)
               });
             }

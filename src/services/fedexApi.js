@@ -109,7 +109,26 @@ async function getTrackingByReference(reference, credentials) {
           if (trackingNumber.trim().toUpperCase() === reference.trim().toUpperCase()) {
             continue;
           }
-          return trackingNumber;
+
+          const tr = (result.trackResults && result.trackResults[0]) || {};
+          const recipientInfo = tr.recipientInformation || {};
+          const addr = recipientInfo.address || {};
+          const contact = recipientInfo.contact || {};
+          const pkg = tr.packageDetails || {};
+          const weightArr = pkg.weightAndDimensions && pkg.weightAndDimensions.weight;
+          const weight = weightArr && weightArr[0] ? parseFloat(weightArr[0].value) : 0;
+          const serviceDetail = tr.serviceDetail || {};
+
+          return {
+            trackingNumber: trackingNumber.trim(),
+            city: addr.city ? addr.city.trim() : '',
+            state: addr.stateOrProvinceCode ? addr.stateOrProvinceCode.trim() : '',
+            country: addr.countryCode ? addr.countryCode.trim().toUpperCase() : '',
+            recipientName: (contact.personName || contact.companyName || '').trim(),
+            weight: weight || 0,
+            packages: parseInt(pkg.count || 1, 10) || 1,
+            service: serviceDetail.description || serviceDetail.type || 'FedEx'
+          };
         }
       }
     } catch (error) {
@@ -133,7 +152,101 @@ async function getTrackingByReference(reference, credentials) {
   return null;
 }
 
+/**
+ * Fetches real package details (actual weight, dimensions, destination city, service)
+ * for a list of tracking numbers from FedEx Track API in batch.
+ * 
+ * @param {string[]} trackingNumbers Array of tracking numbers
+ * @param {object} credentials FedEx credentials { clientId, clientSecret, accountNumber, useSandbox }
+ * @returns {Promise<Record<string, { weight: number, city: string, country: string, packages: number, service: string }>>}
+ */
+async function getShipmentsDetailsByTrackingNumbers(trackingNumbers, credentials) {
+  if (!Array.isArray(trackingNumbers) || trackingNumbers.length === 0) {
+    return {};
+  }
+
+  const cleanNumbers = [...new Set(trackingNumbers.map(t => String(t || '').trim()).filter(t => t.length > 5))];
+  if (cleanNumbers.length === 0) return {};
+
+  const { clientId, clientSecret, useSandbox } = credentials || {};
+  if (!clientId || !clientSecret) return {};
+
+  try {
+    const token = await getAccessToken(clientId, clientSecret, useSandbox);
+    const baseUrl = useSandbox ? 'https://apis-sandbox.fedex.com' : 'https://apis.fedex.com';
+    const url = `${baseUrl}/track/v1/trackingnumbers`;
+
+    const resultMap = {};
+
+    // FedEx allows up to 30 tracking numbers per request
+    const batchSize = 30;
+    for (let i = 0; i < cleanNumbers.length; i += batchSize) {
+      const chunk = cleanNumbers.slice(i, i + batchSize);
+      const payload = {
+        includeDetailedScans: false,
+        trackingInfo: chunk.map(num => ({
+          trackingNumberInfo: { trackingNumber: num }
+        }))
+      };
+
+      try {
+        const response = await axios.post(url, payload, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'x-locale': 'it_IT'
+          },
+          timeout: 15000
+        });
+
+        const completeResults = response.data && response.data.output && response.data.output.completeTrackResults;
+        if (Array.isArray(completeResults)) {
+          for (const resItem of completeResults) {
+            const trackNum = resItem.trackingNumber || (resItem.trackResults && resItem.trackResults[0] && resItem.trackResults[0].trackingNumberInfo && resItem.trackResults[0].trackingNumberInfo.trackingNumber);
+            if (!trackNum) continue;
+
+            const tr = (resItem.trackResults && resItem.trackResults[0]) || {};
+            const recipientInfo = tr.recipientInformation || {};
+            const addr = recipientInfo.address || {};
+            const pkg = tr.packageDetails || {};
+            const weightArr = (pkg.weightAndDimensions && pkg.weightAndDimensions.weight) || (tr.shipmentDetails && tr.shipmentDetails.weight);
+            
+            let weight = 0;
+            if (Array.isArray(weightArr)) {
+              const kgObj = weightArr.find(w => (w.unit || '').toUpperCase() === 'KG') || weightArr[0];
+              if (kgObj && kgObj.value) {
+                const val = parseFloat(kgObj.value);
+                weight = (kgObj.unit && kgObj.unit.toUpperCase() === 'LB') ? parseFloat((val * 0.453592).toFixed(2)) : val;
+              }
+            }
+
+            const serviceDetail = tr.serviceDetail || {};
+
+            resultMap[trackNum] = {
+              trackingNumber: trackNum,
+              weight: weight || 0,
+              city: addr.city ? addr.city.trim() : '',
+              state: addr.stateOrProvinceCode ? addr.stateOrProvinceCode.trim() : '',
+              country: addr.countryCode ? addr.countryCode.trim().toUpperCase() : '',
+              packages: parseInt(pkg.count || 1, 10) || 1,
+              service: serviceDetail.description || serviceDetail.type || 'FedEx'
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('FedEx batch tracking lookup error for chunk:', err.message);
+      }
+    }
+
+    return resultMap;
+  } catch (err) {
+    console.warn('Error authenticating for batch tracking lookup:', err.message);
+    return {};
+  }
+}
+
 module.exports = {
   getAccessToken,
-  getTrackingByReference
+  getTrackingByReference,
+  getShipmentsDetailsByTrackingNumbers
 };

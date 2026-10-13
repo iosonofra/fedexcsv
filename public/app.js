@@ -2506,7 +2506,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const ordersToSync = pendingSyncOrders
         .filter(o => selectedIds.includes(o.id))
-        .map(o => ({ id: o.id, reference: o.reference }));
+        .map(o => ({ 
+          id: o.id, 
+          reference: o.reference,
+          customer_name: o.customer_name,
+          delivery_city: o.delivery_city,
+          weight: o.weight,
+          cod: o.cod
+        }));
 
       if (activePollingInterval) {
         showToast('Attenzione', 'Un processo è già in corso.', 'warning');
@@ -2570,12 +2577,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const allItems = [];
 
     successList.forEach(item => {
-      const origOrder = pendingSyncOrders.find(o => o.id === item.orderId) || {};
+      const origOrder = pendingSyncOrders.find(o => o.id === item.orderId || o.reference === item.reference) || {};
       allItems.push({
-        orderId: item.orderId,
+        orderId: item.orderId || origOrder.id || '—',
         reference: item.reference,
-        customerName: origOrder.customer_name || 'Cliente',
-        deliveryCity: origOrder.delivery_city || '—',
+        customerName: origOrder.customer_name || item.customerName || 'Cliente',
+        deliveryCity: origOrder.delivery_city || item.deliveryCity || '—',
+        weight: origOrder.weight || item.weight || 0,
+        cod: origOrder.cod || item.cod || 0,
         trackingNumber: item.trackingNumber,
         status: 'found',
         statusText: `<span class="log-tag success">Trovato</span>`,
@@ -2617,7 +2626,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const tr = document.createElement('tr');
       const hasTracking = item.status === 'found' && item.trackingNumber;
       const checkboxHTML = hasTracking 
-        ? `<input type="checkbox" class="direct-result-row-cb" data-order-id="${item.orderId}" data-reference="${item.reference}" data-tracking="${item.trackingNumber}" checked>`
+        ? `<input type="checkbox" class="direct-result-row-cb" data-order-id="${item.orderId}" data-reference="${item.reference}" data-tracking="${item.trackingNumber}" data-customer="${escapeHTML(item.customerName)}" data-city="${escapeHTML(item.deliveryCity)}" data-weight="${item.weight || 0}" data-cod="${item.cod || 0}" checked>`
         : `<input type="checkbox" disabled style="opacity: 0.4;">`;
 
       tr.innerHTML = `
@@ -2698,7 +2707,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const ordersToImport = Array.from(checkedCbs).map(cb => ({
         id: parseInt(cb.getAttribute('data-order-id'), 10),
         reference: cb.getAttribute('data-reference'),
-        trackingNumber: cb.getAttribute('data-tracking')
+        trackingNumber: cb.getAttribute('data-tracking'),
+        customer_name: cb.getAttribute('data-customer') || '',
+        delivery_city: cb.getAttribute('data-city') || '',
+        weight: parseFloat(cb.getAttribute('data-weight')) || 0,
+        cod: parseFloat(cb.getAttribute('data-cod')) || 0
       }));
 
       if (ordersToImport.length === 0) {
@@ -3656,15 +3669,49 @@ document.addEventListener('DOMContentLoaded', () => {
           const m = item.message.match(/tracking\s+([A-Z0-9]+)/i);
           if (m) trk = m[1];
         }
+
+        const refUpper = (item.reference || '').trim().toUpperCase();
+        const matchedPending = (typeof pendingSyncOrders !== 'undefined' && Array.isArray(pendingSyncOrders))
+          ? pendingSyncOrders.find(p => (p.reference || '').trim().toUpperCase() === refUpper || p.id === item.orderId)
+          : null;
+        const matchedLoaded = (typeof loadedOrders !== 'undefined' && Array.isArray(loadedOrders))
+          ? loadedOrders.find(l => (l.reference || '').trim().toUpperCase() === refUpper || l.id === item.orderId)
+          : null;
+
+        const recipient = item.customerName
+          || item.customer_name
+          || (matchedPending && matchedPending.customer_name && matchedPending.customer_name !== 'Cliente' ? matchedPending.customer_name : '')
+          || (matchedLoaded && matchedLoaded.customer_name ? matchedLoaded.customer_name : '')
+          || '';
+
+        const city = item.deliveryCity
+          || item.delivery_city
+          || (matchedPending && matchedPending.delivery_city && matchedPending.delivery_city !== '—' ? matchedPending.delivery_city : '')
+          || (matchedLoaded && matchedLoaded.delivery_city ? matchedLoaded.delivery_city : '')
+          || '';
+
+        const weight = (item.weight && Number(item.weight) > 0 ? item.weight : null)
+          || (matchedPending && matchedPending.weight ? matchedPending.weight : null)
+          || (matchedLoaded && matchedLoaded.weight ? matchedLoaded.weight : null)
+          || 0;
+
+        const packages = item.packages || 1;
+        const service = item.service || 'FedEx';
+
+        const cod = (item.cod !== undefined && item.cod !== null && Number(item.cod) > 0 ? item.cod : null)
+          || (matchedPending && matchedPending.cod ? matchedPending.cod : null)
+          || (matchedLoaded && matchedLoaded.cod ? matchedLoaded.cod : null)
+          || 0;
+
         return {
           reference: item.reference || '',
           tracking: trk,
-          recipient: '',
-          city: '',
-          packages: 1,
-          weight: 0,
-          cod: 0,
-          service: 'FedEx'
+          recipient: recipient,
+          city: city,
+          packages: packages,
+          weight: weight,
+          cod: cod,
+          service: service
         };
       });
 
@@ -3871,6 +3918,50 @@ document.addEventListener('DOMContentLoaded', () => {
       recalculateManifestStats();
       const lastRefInput = manifestTableBody.querySelector('tr:last-child .manifest-row-ref');
       if (lastRefInput) lastRefInput.focus();
+    });
+  }
+
+  // Completa o ricarica dati mancanti da PrestaShop
+  const btnEnrichManifestPs = document.getElementById('btn-enrich-manifest-ps');
+  if (btnEnrichManifestPs) {
+    btnEnrichManifestPs.addEventListener('click', async () => {
+      syncManifestRowsFromDOM();
+      if (!currentManifestRows || currentManifestRows.length === 0) {
+        showToast('Nessuna riga', 'Non ci sono spedizioni nella tabella da completare.', 'warning');
+        return;
+      }
+
+      btnEnrichManifestPs.disabled = true;
+      const originalHtml = btnEnrichManifestPs.innerHTML;
+      btnEnrichManifestPs.innerHTML = '<span class="spinner" style="width:13px;height:13px;"></span> Completamento...';
+
+      try {
+        const res = await fetch('/api/manifest/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shipments: currentManifestRows, forceRefresh: true })
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Impossibile completare i dati da PrestaShop.');
+        }
+
+        const data = await res.json();
+        if (data.shipments && data.shipments.length > 0) {
+          currentManifestRows = data.shipments;
+          renderManifestTable();
+          recalculateManifestStats();
+          showToast('Dati Sincronizzati', `Pesi reali da FedEx API, città e destinatari sincronizzati per ${currentManifestRows.length} spedizioni.`, 'success');
+        }
+      } catch (err) {
+        console.error('Errore completamento dati:', err);
+        showToast('Errore', err.message, 'error');
+      } finally {
+        btnEnrichManifestPs.disabled = false;
+        btnEnrichManifestPs.innerHTML = originalHtml;
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+      }
     });
   }
 
